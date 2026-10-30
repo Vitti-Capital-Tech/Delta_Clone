@@ -11,6 +11,5 @@ node_modules/
 .vercel/
 *.tgz
 *.log
-.claude/
 .DS_Store
 Thumbs.db
