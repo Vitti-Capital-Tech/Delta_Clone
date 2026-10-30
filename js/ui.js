@@ -463,23 +463,9 @@
     if (b.dataset.act === 'tpsl') { const pos = a.positions[s]; ask(`${s} Take Profit / Stop Loss`, [{ k: 'tp', label: 'Take profit price (blank to clear)', value: pos.tp || '' }, { k: 'sl', label: 'Stop loss price (blank to clear)', value: pos.sl || '' }], async (v) => { const r = await Engine.setTpSl(a, s, +v.tp || null, +v.sl || null); if (!r.ok) toast('error', r.error); }); }
   };
 
-  /* ================= accounts (left sidebar) ================= */
-  let sideKey = '';
+  /* ================= accounts (profile icon in the header) ================= */
   function renderAcct() {
-    const list = Engine.state.accounts, act = Engine.active; if (!act) return;
-    const key = list.map(a => a.id + a.name).join('|') + act.id;
-    if (key !== sideKey) {
-      sideKey = key;
-      $('#side').innerHTML = `<div class="shead">Demo accounts</div><button class="newacct" id="newAcct">+ Create new account</button><div class="alist">` +
-        list.map(a => `<div class="aitem ${a.id === act.id ? 'on' : ''}" data-id="${a.id}"><div class="an"><b>${esc(a.name)}</b><small data-pos="${a.id}"></small></div><div class="ar"><span data-eq="${a.id}"></span><small data-pnl="${a.id}"></small></div></div>`).join('') +
-        `</div><button class="btn" id="manageAcct">Manage accounts</button>`;
-    }
-    for (const a of list) {
-      const s = Engine.summary(a), eq = $(`[data-eq="${a.id}"]`); if (!eq) continue;
-      eq.textContent = fmt(s.equity);
-      const pn = $(`[data-pnl="${a.id}"]`), d = s.equity - a.initial; pn.textContent = sgn(d); pn.className = cls(d);
-      $(`[data-pos="${a.id}"]`).textContent = `${Object.keys(a.positions).length} positions · ${a.orders.length} orders`;
-    }
+    const act = Engine.active; if (!act) return;
     renderHdr(act, Engine.summary(act));
   }
   /* ---- profile icon in the header: switch / edit accounts ---- */
@@ -528,11 +514,6 @@
       const r = await Engine.deleteAccount(id); if (!r.ok) return toast('error', r.error); toast('info', 'Account deleted'); after && after();
     });
   }
-  $('#side').onclick = (e) => {
-    if (e.target.closest('#newAcct')) return newAccountDialog();
-    if (e.target.closest('#manageAcct')) return manageAccounts();
-    const it = e.target.closest('.aitem'); if (it && it.dataset.id !== Engine.active.id) { Engine.switchAccount(it.dataset.id); toast('info', `Switched to ${Engine.active.name}`); }
-  };
   function newAccountDialog() {
     ask('New demo account', [{ k: 'name', label: 'Account name', value: `Account ${Engine.state.accounts.length + 1}`, text: true }, { k: 'bal', label: 'Starting balance (USD)', value: 10000 }],
       async (v) => { const r = await Engine.createAccount(v.name, +v.bal); if (!r.ok) return toast('error', r.error); toast('success', `Created ${Engine.active.name}`); });
