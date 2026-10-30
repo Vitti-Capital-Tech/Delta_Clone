@@ -480,8 +480,53 @@
       const pn = $(`[data-pnl="${a.id}"]`), d = s.equity - a.initial; pn.textContent = sgn(d); pn.className = cls(d);
       $(`[data-pos="${a.id}"]`).textContent = `${Object.keys(a.positions).length} positions · ${a.orders.length} orders`;
     }
-    const s = Engine.summary(act);
-    $('#hdrAcct').innerHTML = `<span class="mut">${esc(act.name)}</span> <span>Equity <b>${fmt(s.equity)}</b></span> <span>Available <b>${fmt(s.available)}</b></span> <span class="${cls(s.upnl)}">uPnL <b>${sgn(s.upnl)}</b></span>`;
+    renderHdr(act, Engine.summary(act));
+  }
+  /* ---- profile icon in the header: switch / edit accounts ---- */
+  const hue = (str) => { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+  const avatarStyle = (name) => `background:hsl(${hue(name)} 55% 42%)`;
+  let hdrBuilt = false;
+  function renderHdr(act, s) {
+    if (!hdrBuilt) {
+      $('#hdrAcct').innerHTML = '<div class="hstats" id="hStats"></div><div class="prof"><button id="profBtn" class="avatar" title="Switch or edit account"></button><div id="profMenu" class="menu hidden"></div></div>';
+      hdrBuilt = true;
+    }
+    $('#hStats').innerHTML = `<span>Equity <b>${fmt(s.equity)}</b></span> <span>Available <b>${fmt(s.available)}</b></span> <span class="${cls(s.upnl)}">uPnL <b>${sgn(s.upnl)}</b></span>`;
+    const b = $('#profBtn'), ch = (act.name.trim()[0] || '?').toUpperCase();
+    if (b.textContent !== ch) b.textContent = ch;
+    b.style.cssText = avatarStyle(act.name);
+  }
+  function renderProfMenu() {
+    const list = Engine.state.accounts, act = Engine.active, s = Engine.summary(act);
+    $('#profMenu').innerHTML = `<div class="mhead"><span class="avatar big" style="${avatarStyle(act.name)}">${esc((act.name.trim()[0] || '?').toUpperCase())}</span><div><b>${esc(act.name)}</b><small class="mut" style="display:block">Equity ${fmt(s.equity)} USD</small></div></div>
+      <div class="sec2">Switch account</div>` +
+      list.map(a => { const q = Engine.summary(a); return `<div class="row ${a.id === act.id ? 'on' : ''}" data-sw="${a.id}"><span>${a.id === act.id ? '✓ ' : ''}<b>${esc(a.name)}</b></span><span style="text-align:right">${fmt(q.equity)}<br><small class="${cls(q.equity - a.initial)}">${sgn(q.equity - a.initial)}</small></span></div>`; }).join('') +
+      `<div class="mf"><div class="sec2">Edit "${esc(act.name)}"</div>
+        <div class="row" data-pa="rn"><span>Rename</span></div><div class="row" data-pa="dp"><span>Add funds</span></div>
+        <div class="row" data-pa="rs"><span>Reset account</span></div><div class="row dng" data-pa="dl"><span>Delete account</span></div></div>
+      <div class="mf"><div class="row" data-pa="new"><b>+ New demo account</b></div><div class="row" data-pa="all"><span>Manage all accounts</span></div></div>`;
+  }
+  $('#hdrAcct').addEventListener('click', (e) => {
+    if (e.target.closest('#profBtn')) { const m = $('#profMenu'); if (m.classList.contains('hidden')) { renderProfMenu(); m.classList.remove('hidden'); } else m.classList.add('hidden'); }
+  });
+  $('#hdrAcct').addEventListener('mousedown', (e) => {
+    const m = $('#profMenu'); if (!m || !e.target.closest('#profMenu')) return;
+    const sw = e.target.closest('[data-sw]'), pa = e.target.closest('[data-pa]');
+    if (sw) { m.classList.add('hidden'); if (sw.dataset.sw !== Engine.active.id) { Engine.switchAccount(sw.dataset.sw); toast('info', `Switched to ${Engine.active.name}`); } return; }
+    if (!pa) return;
+    m.classList.add('hidden'); const id = Engine.active.id;
+    ({ rn: () => acctRename(id), dp: () => acctFund(id), rs: () => acctReset(id), dl: () => acctDelete(id), new: newAccountDialog, all: manageAccounts })[pa.dataset.pa]();
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.prof')) { const m = $('#profMenu'); if (m) m.classList.add('hidden'); } });
+  function acctRename(id, after) { const a = Engine.state.accounts.find(x => x.id === id); ask('Rename account', [{ k: 'name', label: 'Name', value: a.name, text: true }], async v => { await Engine.renameAccount(id, v.name); after && after(); }); }
+  function acctFund(id, after) { ask('Add funds', [{ k: 'amt', label: 'Amount (USD)', value: 1000 }], async v => { await Engine.deposit(id, +v.amt); toast('success', 'Funds added'); after && after(); }); }
+  function acctReset(id, after) { const a = Engine.state.accounts.find(x => x.id === id); ask('Reset account', [{ k: 'bal', label: 'New starting balance (USD) – clears positions, orders and history', value: a.initial }], async v => { await Engine.resetAccount(id, +v.bal); toast('info', 'Account reset'); after && after(); }); }
+  function acctDelete(id, after) {
+    const a = Engine.state.accounts.find(x => x.id === id);
+    ask(`Delete "${a.name}"? Type OK to confirm`, [{ k: 'c', label: 'This removes its positions, orders and history permanently', value: '', text: true }], async v => {
+      if (v.c.trim().toUpperCase() !== 'OK') return toast('info', 'Delete cancelled');
+      const r = await Engine.deleteAccount(id); if (!r.ok) return toast('error', r.error); toast('info', 'Account deleted'); after && after();
+    });
   }
   $('#side').onclick = (e) => {
     if (e.target.closest('#newAcct')) return newAccountDialog();
@@ -504,10 +549,10 @@
       const redo = () => { manageAccounts(); };
       if (act === 'new') return newAccountDialog();
       if (act === 'sw') { Engine.switchAccount(id); draw(); }
-      if (act === 'rn') ask('Rename account', [{ k: 'name', label: 'Name', value: a.name, text: true }], async v => { await Engine.renameAccount(id, v.name); redo(); });
-      if (act === 'dp') ask('Add funds', [{ k: 'amt', label: 'Amount (USD)', value: 1000 }], async v => { await Engine.deposit(id, +v.amt); redo(); });
-      if (act === 'rs') ask('Reset account', [{ k: 'bal', label: 'New starting balance (USD) – clears positions, orders and history', value: a.initial }], async v => { await Engine.resetAccount(id, +v.bal); toast('info', 'Account reset'); redo(); });
-      if (act === 'dl') { Engine.deleteAccount(id).then(r => { if (!r.ok) toast('error', r.error); else draw(); }); }
+      if (act === 'rn') acctRename(id, redo);
+      if (act === 'dp') acctFund(id, redo);
+      if (act === 'rs') acctReset(id, redo);
+      if (act === 'dl') acctDelete(id, redo);
     };
   }
 
