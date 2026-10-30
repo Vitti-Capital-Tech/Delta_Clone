@@ -474,13 +474,12 @@
   let hdrBuilt = false;
   function renderHdr(act, s) {
     if (!hdrBuilt) {
-      $('#hdrAcct').innerHTML = '<div class="hstats" id="hStats"></div><div class="prof"><button id="profBtn" class="avatar" title="Switch or edit account"></button><div id="profMenu" class="menu hidden"></div></div>';
+      $('#hdrAcct').innerHTML = '<div class="hstats" id="hStats"></div><div class="prof"><button id="profBtn" class="profbtn" title="Switch or edit account"></button><div id="profMenu" class="menu hidden"></div></div>';
       hdrBuilt = true;
     }
-    $('#hStats').innerHTML = `<span>Equity <b>${fmt(s.equity)}</b></span> <span>Available <b>${fmt(s.available)}</b></span> <span class="${cls(s.upnl)}">uPnL <b>${sgn(s.upnl)}</b></span>`;
-    const b = $('#profBtn'), ch = (act.name.trim()[0] || '?').toUpperCase();
-    if (b.textContent !== ch) b.textContent = ch;
-    b.style.cssText = avatarStyle(act.name);
+    $('#hStats').innerHTML = `<div class="hs"><small>Equity</small><b>${fmt(s.equity)}</b></div><div class="hs"><small>Available</small><b>${fmt(s.available)}</b></div><div class="hs"><small>Unrealised PnL</small><b class="${cls(s.upnl)}">${sgn(s.upnl)}</b></div>`;
+    const ch = (act.name.trim()[0] || '?').toUpperCase(), html = `<span class="avatar" style="${avatarStyle(act.name)}">${esc(ch)}</span><span class="pname">${esc(act.name)}</span><span class="caret">▾</span>`;
+    const b = $('#profBtn'); if (b.dataset.h !== html) { b.dataset.h = html; b.innerHTML = html; }
   }
   function renderProfMenu() {
     const list = Engine.state.accounts, act = Engine.active, s = Engine.summary(act);
@@ -583,7 +582,7 @@
   Feed.on('book', (s) => { if (s === ui.sym) dirty(); });
   Feed.on('trade', (s) => { if (s === ui.sym) dirty(); });
   Feed.on('trades', (s) => { if (s === ui.sym) dirty(); });
-  Feed.on('status', () => { const el = $('#feedStatus'); el.classList.toggle('live', Feed.status === 'live'); el.lastChild.textContent = Feed.status === 'live' ? 'Live' : Feed.status === 'connecting' ? 'Connecting' : 'Reconnecting'; });
+  Feed.on('status', () => { const el = $('#feedWarn'); el.classList.toggle('hidden', Feed.status === 'live'); el.textContent = Feed.status === 'connecting' ? 'Connecting…' : 'Market feed reconnecting…'; }); // shown only when the feed is down
   Engine.onChange((kind, p) => {
     if (kind === 'fill' && p) {
       const f = p.order, who = p.acct.id === Engine.active.id ? '' : `[${p.acct.name}] `;

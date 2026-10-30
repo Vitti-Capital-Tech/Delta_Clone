@@ -6,16 +6,18 @@
 <title>Delta Demo – Futures & Options</title>
 <link rel="preconnect" href="https://api.india.delta.exchange">
 <link rel="preconnect" href="https://socket.india.delta.exchange">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/favicon.svg">
 <link rel="stylesheet" href="css/style.css">
 <script src="js/vendor/lwc.js"></script>
 </head>
 <body>
 <header class="top">
-  <div class="logo"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19z" fill="none" stroke="#3b82f6" stroke-width="2.4" stroke-linejoin="round"/></svg><b>delta</b><span class="tag">DEMO</span></div>
+  <div class="logo"><img src="assets/favicon.svg" width="28" height="28" alt="Delta"><b>delta</b><span class="tag">DEMO</span></div>
   <nav id="nav"><a data-view="futures" class="on">Futures</a><a data-view="options">Options</a></nav>
   <div class="sp"></div>
+  <div id="feedWarn" class="feedwarn hidden"></div>
   <div id="hdrAcct" class="hdr-acct"></div>
-  <div id="feedStatus" class="feed"><i></i><span>Connecting</span></div>
 </header>
 
 <div class="shell">

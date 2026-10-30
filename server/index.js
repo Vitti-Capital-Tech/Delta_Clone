@@ -161,6 +161,7 @@ app.use((req, res, next) => {
 app.get('/health', (_req, res) => res.json({ ok: true, feed: Feed.status, accounts: Engine.state.accounts.length }));
 app.use('/js', express.static(path.join(root, 'js')));
 app.use('/css', express.static(path.join(root, 'css')));
+app.use('/assets', express.static(path.join(root, 'assets')));
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'index.html')));
 
 const server = http.createServer(app);
