@@ -1,0 +1,9 @@
+.env
+node_modules
+server
+deploy
+supabase
+DEPLOY.md
+package.json
+package-lock.json
+start.bat

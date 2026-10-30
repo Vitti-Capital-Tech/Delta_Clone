@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delta Demo – Futures & Options</title>
+<link rel="preconnect" href="https://api.india.delta.exchange">
+<link rel="preconnect" href="https://socket.india.delta.exchange">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/vendor/lwc.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19z" fill="none" stroke="#3b82f6" stroke-width="2.4" stroke-linejoin="round"/></svg><b>delta</b><span class="tag">DEMO</span></div>
+  <nav id="nav"><a data-view="futures" class="on">Futures</a><a data-view="options">Options</a></nav>
+  <div class="sp"></div>
+  <div id="hdrAcct" class="hdr-acct"></div>
+  <div id="feedStatus" class="feed"><i></i><span>Connecting</span></div>
+</header>
+
+<div class="shell">
+<aside id="side" class="side"></aside>
+<div class="main">
+<section class="tickerbar">
+  <div id="chips" class="chips"></div>
+  <button id="symBtn" class="symbtn"></button>
+  <div id="symPicker" class="picker hidden">
+    <input id="symSearch" placeholder="Search markets" autocomplete="off">
+    <div class="phead"><span>Market</span><span>Price</span><span>24h</span></div>
+    <div id="symList"></div>
+  </div>
+  <div id="stats" class="stats"></div>
+</section>
+
+<main class="grid">
+  <section class="panel chart-panel">
+    <div class="ptools" id="chartTools"><div id="resBar" class="resbar"></div><div class="sp"></div><div id="chartOpts" class="resbar"></div></div>
+    <div id="chartWrap" class="chartwrap"><div id="legend" class="legend"></div><div id="chart"></div></div>
+    <div id="chain" class="chain hidden"></div>
+  </section>
+
+  <section class="panel book-panel">
+    <div class="tabs" id="bookTabs"><a data-t="book" class="on">Order Book</a><a data-t="trades">Recent Trades</a></div>
+    <div id="bookView"></div>
+    <div id="tradesView" class="hidden"></div>
+  </section>
+
+  <section class="panel order-panel" id="orderPanel"></section>
+
+  <section class="panel bottom-panel">
+    <div class="tabs" id="botTabs"></div>
+    <div id="botView" class="tbl-wrap"></div>
+  </section>
+</main>
+</div></div>
+
+<div id="modal" class="modal hidden"><div class="mbox" id="mbox"></div></div>
+<div id="toasts"></div>
+
+<script src="js/config.js"></script>
+<script src="js/feed.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/client.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

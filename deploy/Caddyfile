@@ -1,0 +1,5 @@
+# Replace YOUR-ADDRESS-HERE with your domain (A record -> Elastic IP) or <ip-with-dashes>.sslip.io, e.g. 13-233-10-20.sslip.io
+# Caddy gets and renews the HTTPS certificate automatically and proxies WebSockets.
+YOUR-ADDRESS-HERE {
+    reverse_proxy localhost:5173
+}

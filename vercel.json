@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "node scripts/gen-config.js",
+  "installCommand": null,
+  "outputDirectory": "."
+}

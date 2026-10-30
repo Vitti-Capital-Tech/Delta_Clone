@@ -1,0 +1,16 @@
+# secrets - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# dependencies / build / local
+node_modules/
+.vercel/
+*.tgz
+*.log
+.claude/
+.DS_Store
+Thumbs.db
