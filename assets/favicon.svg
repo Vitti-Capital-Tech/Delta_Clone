@@ -1,19 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4f9bff"/>
-      <stop offset="1" stop-color="#1e40d8"/>
-    </linearGradient>
-    <linearGradient id="up" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0" stop-color="#00b386"/>
-      <stop offset="1" stop-color="#34e3b4"/>
+    <linearGradient id="o" gradientUnits="userSpaceOnUse" x1="8" y1="8" x2="56" y2="56">
+      <stop offset="0" stop-color="#ffb04a"/>
+      <stop offset="1" stop-color="#f26a0f"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
-  <!-- bold delta -->
-  <path d="M32 12 53 49H11z" fill="none" stroke="#fff" stroke-width="6.5" stroke-linejoin="round"/>
-  <!-- rising bars inside the delta -->
-  <rect x="25.5" y="40" width="4" height="5" rx="1" fill="url(#up)"/>
-  <rect x="31" y="36.5" width="4" height="8.5" rx="1" fill="url(#up)"/>
-  <rect x="36.5" y="33" width="4" height="12" rx="1" fill="url(#up)"/>
+  <rect width="64" height="64" rx="14" fill="#1b1d22"/>
+  <rect x=".75" y=".75" width="62.5" height="62.5" rx="13.25" fill="none" stroke="#30343c" stroke-width="1.5"/>
+  <!-- lowercase d: round bowl + a candlestick for the stem -->
+  <circle cx="26" cy="38" r="10.5" fill="none" stroke="url(#o)" stroke-width="6.5"/>
+  <path d="M40.5 10.5v43" stroke="url(#o)" stroke-width="2.6" stroke-linecap="round"/>
+  <rect x="36.3" y="16" width="8.4" height="32" rx="2.4" fill="url(#o)"/>
 </svg>

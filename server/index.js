@@ -167,13 +167,17 @@ app.get('/health', (_req, res) => res.json({ ok: true, feed: Feed.status, accoun
 app.use('/js', express.static(path.join(root, 'js')));
 app.use('/css', express.static(path.join(root, 'css')));
 app.use('/assets', express.static(path.join(root, 'assets')));
+app.get('/favicon.ico', (_req, res) => res.sendFile(path.join(root, 'assets', 'favicon-32.png'))); // browsers that ask for /favicon.ico directly
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'index.html')));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024, verifyClient: (info) => authed(info.req.headers.authorization, new URL(info.req.url, 'http://x').searchParams.get('key')) });
 
 let OWNER = null; // no login: every browser is the same single user
+// keepalive: ping every 25s so proxies keep the socket open, and drop sockets that stopped answering
+setInterval(() => { for (const ws of wss.clients) { if (ws.isAlive === false) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch (_) {} } }, 25000);
 wss.on('connection', (ws) => {
+  ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; });
   const ready = (async () => {
     const user = { id: OWNER };
     ws.user = user;

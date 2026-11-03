@@ -6,7 +6,7 @@
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
   Engine.state.activeId = lsGet('dx_active');
 
-  let ws = null, rid = 1, retry = 0, firstState = null, closing = false;
+  let ws = null, rid = 1, retry = 0, firstState = null, closing = false, reTimer = null;
   const pending = new Map();
 
   /* ---------- websocket ---------- */
@@ -19,11 +19,17 @@
         pending.forEach(p => p.reject(new Error('Disconnected'))); pending.clear();
         if (closing) return;
         Client.connected = false; Engine.emit('conn');
-        setTimeout(() => connect().then(() => {}), Math.min(5000, 400 * ++retry));
+        reTimer = setTimeout(() => { reTimer = null; connect(); }, Math.min(5000, 400 * ++retry));
       };
       ws.onopen = () => { retry = 0; Client.connected = true; Engine.emit('conn'); };
     });
   }
+
+  /* keep the socket busy so routers and proxies don't drop it as idle; reconnect at once when the tab or network comes back */
+  setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ op: 'ping' })); }, 25000);
+  const wake = () => { if (closing || (ws && ws.readyState <= 1)) return; if (reTimer) { clearTimeout(reTimer); reTimer = null; } retry = 0; connect(); };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+  window.addEventListener('online', wake);
 
   function onMsg(m) {
     if (m.t === 'state') {

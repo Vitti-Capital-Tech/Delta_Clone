@@ -88,7 +88,6 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 @keyframes ti{from{transform:translateX(20px);opacity:0}}
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#2b3138;border-radius:4px}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
-@media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) 300px}.book-panel{display:none}.bottom-panel{grid-column:1}}
 
 .shell{flex:1;min-height:0;display:flex}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -416,3 +415,89 @@ body:not(.optv) .bottom-panel{grid-column:1/4}
 .pop.spec .cdbtn,.pop.cdpop .cdbtn{display:block;text-align:center;margin:8px -16px -6px;padding:12px 0;border-top:1px solid #363a42;color:var(--tx);font-size:13px}
 .pop .cdbtn:hover{background:#ffffff08}
 .pop.cdpop{top:32px;right:0;width:400px}
+
+/* ---- responsive ---- */
+.mbar,.mmk,.mport,.mnav{display:none}
+.cdet{display:flex;align-items:center;gap:16px}
+.smore{display:none;color:#c9cdd2;cursor:pointer;font-size:16px;letter-spacing:1px}
+.pop.morepop{top:32px;right:120px;width:200px}
+.ctbl td.bab span{display:block;font-weight:500;cursor:pointer}.ctbl td.bab span+span{margin-top:2px}
+.ctbl th span.buy,.ctbl th span.sell{display:block;font-size:11px}
+.spill{display:none}
+/* laptops: Delta folds 24h High / Low of the futures strip into "⋯" */
+@media (max-width:1280px){
+  .st-hl{display:none!important}
+  .smore{display:inline}
+  .stats{gap:20px}
+  .grid{grid-template-columns:minmax(0,1fr) 260px 290px}
+  body.optv .grid{grid-template-columns:minmax(0,1fr) 260px 290px}
+}
+/* phones and small tablets: Delta's mobile app layout */
+@media (max-width:900px){
+  body.mob .top{height:50px;padding:0 12px;gap:12px}
+  body.mob #nav,body.mob .hstats,body.mob .tickerbar,body.mob #feedWarn{display:none!important}
+  body.mob .profbtn .pname{max-width:90px}
+  body.mob{padding-bottom:62px}
+  body.mob .shell{flex:none}
+  body.mob .grid{display:block;height:auto}
+  body.mob .grid>.panel{display:none}
+  body.mob .mnav{display:flex;position:fixed;left:0;right:0;bottom:0;height:62px;background:#1b1d22;border-top:1px solid var(--dln);z-index:80}
+  .mnav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9aa0a8;font-size:11.5px;cursor:pointer}
+  .mnav a svg{width:22px;height:22px}.mnav a.on{color:var(--dacc)}
+  /* Markets */
+  body.mob.mt-markets .mmk{display:flex;flex-direction:column;background:var(--dbg)}
+  .mmk .pk-tabs{overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+  .mk-head,.mk-row{display:grid;grid-template-columns:28px minmax(0,1.6fr) 1fr .8fr;align-items:center;padding:0 12px;gap:6px;font-variant-numeric:tabular-nums}
+  .mk-head{grid-template-columns:minmax(0,1.6fr) 1fr .8fr;padding:10px 12px 8px 46px;color:var(--mut);font-size:12px;border-bottom:1px solid var(--dln)}
+  .mk-head span:nth-child(n+2),.mk-row>span:nth-child(n+3){text-align:right}
+  .mk-row{min-height:58px;border-bottom:1px solid #23262c;cursor:pointer}
+  .mk-row .star{color:var(--mut);font-size:16px}
+  .mk-n b{font-weight:600}.mk-n small,.mk-p small{display:block;color:var(--mut);font-size:11.5px;margin-top:2px}
+  .mk-n .levb{font-style:normal;font-size:10.5px;padding:1px 5px;margin-left:4px}
+  .mk-p b{font-weight:500}
+  body.mob.mt-markets.mk-opt .chart-panel{display:flex;height:calc(100vh - 50px - 46px - 62px)}
+  body.mob .cbar{padding:10px 12px;gap:10px}
+  body.mob .cbar .unds{margin-left:0}
+  .mexp{display:flex;flex-direction:column;margin-left:10px;line-height:1.2}.mexp small{color:var(--mut);font-size:11px}.mexp b{font-weight:600}
+  .cview{display:flex;background:var(--drow);border:1px solid var(--dln);border-radius:4px;padding:2px}
+  .cview a{padding:5px 12px;border-radius:3px;color:var(--mut);cursor:pointer;font-size:12.5px}.cview a.on{color:var(--dacc);background:#2a2d34;outline:1px solid var(--dacc)}
+  body.mob .cinfo{padding:8px 12px;font-size:12px}
+  body.mob .cstk{width:76px}
+  body.mob .cbody .ctbl td,body.mob .cbody .ctbl th{padding:0 8px;height:54px}
+  body.mob .cbody .ctbl .c-p{min-width:0}body.mob .cbody .ctbl td.oi{min-width:0}
+  body.mob .cbody .ctbl .spotrow td{height:0}
+  body.mob .spill{display:inline-block;position:relative;top:-11px;background:#e8eaed;color:#16181d;border-radius:11px;padding:2px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  body.mob .cstk{overflow:visible}body.mob .cbody{overflow:hidden}
+  /* symbol bar over Trade / Charts */
+  body.mob.mt-trade .mbar,body.mob.mt-charts .mbar{display:block;background:var(--dbg);border-bottom:1px solid var(--dln);padding:10px 12px}
+  .mb1{display:flex;align-items:center;gap:10px}
+  .mb1 .star{color:var(--dacc);font-size:22px;cursor:pointer}
+  .mb-sym{display:flex;flex-direction:column;cursor:pointer;min-width:0}.mb-sym b{font-size:15px;font-weight:600}.mb-sym .car{color:var(--dacc);font-size:12px}
+  .mb-sym small{color:var(--mut);font-size:11.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mb-px{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end}.mb-px b{font-size:15px;font-weight:600}.mb-px small{font-size:12px}
+  .mb-px.buy b{color:var(--dbuy)}.mb-px.sell b{color:var(--dsell)}
+  .mb2{display:flex;align-items:flex-end;gap:16px;margin-top:10px}
+  .mb2 div{display:flex;flex-direction:column;gap:2px}.mb2 small{color:var(--mut);font-size:11px}.mb2 b{font-weight:500;font-size:12.5px;white-space:nowrap}
+  .mb-go{border:1px solid var(--dacc);color:var(--dacc);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12.5px;font-weight:600}
+  /* Trade: compact book on the left, order form on the right */
+  body.mob.mt-trade .grid{display:grid;grid-template-columns:minmax(0,42fr) minmax(0,58fr);grid-template-rows:auto;height:auto;gap:1px}
+  body.mob.mt-trade .book-panel,body.mob.mt-trade .order-panel{display:flex;grid-row:1;height:calc(100vh - 50px - 106px - 62px);min-height:460px}
+  body.mob.mt-trade .book-panel{grid-column:1}body.mob.mt-trade .order-panel{grid-column:2}
+  body.mob.mt-trade .dtr{display:none}
+  body.mob.mt-trade .dhd,body.mob.mt-trade .drow{grid-template-columns:1fr 1fr;padding:0 8px;font-size:12px}
+  body.mob.mt-trade .dhd span:nth-child(3),body.mob.mt-trade .drow .tot{display:none}
+  body.mob.mt-trade .dmid b{font-size:16px}
+  body.mob .dop{padding:10px 8px;gap:10px}
+  body.mob .dty{gap:12px;font-size:12.5px}
+  body.mob .dsl-l{font-size:9.5px}
+  /* Charts */
+  body.mob.mt-charts .chart-panel{display:flex;height:calc(100vh - 50px - 106px - 62px);min-height:420px}
+  body.mob .ptools.optbar .crow1{display:none}
+  body.mob .ptools.optbar .resbar{overflow-x:auto;scrollbar-width:none}
+  /* Portfolio */
+  body.mob.mt-portfolio .mport{display:block;padding:12px;background:var(--dbg)}
+  .mport .pm-stats{margin:0;grid-template-columns:repeat(2,1fr)}
+  .mport .pm-stats div:nth-child(3){border-left:0}.mport .pm-stats div:nth-child(n+3){border-top:1px solid #2b2e35}
+  body.mob.mt-portfolio .bottom-panel{display:flex;height:calc(100vh - 50px - 150px - 62px);min-height:380px}
+  body.mob .bottom-panel .tabs{overflow-x:auto}
+}

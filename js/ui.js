@@ -20,7 +20,7 @@
     view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
     sym: null, otype: 'limit', side: 'buy', botTab: 'positions',
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
-    lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
+    lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, mtab: 'markets', mk: 'options', cview: 'price', moreOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
   };
   const watch = new Set(saved.watch || []); // ☆ markets in the picker's Watchlist tab
   const hiddenCols = new Set(saved.hiddenCols || []); // option chain columns switched off in the column picker
@@ -160,7 +160,7 @@
     const p = P(), rows = Feed.chain(p.under, p.expiry), ex = Feed.expiries(p.under), d6 = (e) => { const d = new Date(e); return z2(d.getDate()) + z2(d.getMonth() + 1) + String(d.getFullYear()).slice(2); };
     const sel = (k, opts, v) => `<select class="csel" data-cs="${k}">${opts.map(([val, l]) => `<option value="${val}"${String(val) === String(v) ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
     const SRC = [['traded', 'Traded Price'], ['mark', 'Mark Price'], ['index', esc(p.under) + ' Chart'], ['depth', 'Depth']];
-    tools.innerHTML = `<div class="trow">${modeSeg()}
+    tools.innerHTML = `<div class="trow crow1">${modeSeg()}
         ${sel('kind', [['call', 'C'], ['put', 'P']], p.kind)}${sel('under', unders().map(u => [u, u]), p.under)}
         ${sel('strike', rows.map(r => [r.strike, r.strike]), p.strike)}${sel('expiry', ex.map(e => [e, d6(e)]), p.expiry)}<span class="levb">${p.maxLev}x</span></div>
       <div class="trow tabs2">${SRC.map(([k, l]) => `<a data-src="${k}" class="${k === ui.osrc ? 'on' : ''}">${l}</a>`).join('')}</div>
@@ -247,7 +247,7 @@
       ui.sym = ui.opt;
     }
     ui.f.price = ui.f.stop = ui.f.tp = ui.f.sl = ''; ui.f.size = ui.f.qty = ''; ui.lev.open = false; ui.ddOpen = false;
-    applyView(); updateInterest(); renderOrderPanel(); dirty(true);
+    applyView(); updateInterest(); renderOrderPanel(); if (isMob()) applyMobile(); dirty(true);
   }
   function applyView() {
     const opt = ui.view === 'options', chain = opt && ui.optMode === 'chain';
@@ -278,16 +278,19 @@
       $('#symSearch').oninput = renderPicker;
     }
     $('#pkTabs').innerHTML = PICK_TABS.map(([k, l]) => `<a data-pt="${k}" class="${k === ui.pickTab ? 'on' : ''}">${l}</a>`).join('');
-    const q = $('#symSearch').value.trim().toLowerCase();
-    const list = Feed.symbols.filter(x => { const p = Feed.products[x]; return ui.pickTab === 'watch' ? watch.has(x) : ui.pickTab === 'rwa' ? p.tradfi : true; })
-      .filter(x => !q || x.toLowerCase().includes(q) || (Feed.products[x].shortDesc || '').toLowerCase().includes(q))
-      .sort((a, b) => ((Feed.tickers[b] || {}).volUsd || 0) - ((Feed.tickers[a] || {}).volUsd || 0)).slice(0, 200);
+    const list = marketList(ui.pickTab, $('#symSearch').value);
     $('#pkList').innerHTML = list.map(x => {
       const p = Feed.products[x], t = Feed.tickers[x] || {}, ch = t.open ? (t.last - t.open) / t.open * 100 : 0;
       return `<div class="pk-row ${x === ui.sym ? 'on' : ''}" data-s="${x}"><span class="pk-c"><span class="star ${watch.has(x) ? 'on' : ''}" data-w="${x}">${watch.has(x) ? '★' : '☆'}</span>
           <span><b>${esc(x)}</b> <i class="levb">${p.maxLev}x</i><small>${esc(p.shortDesc || p.desc)}</small></span></span>
         <span>${usd(t.last, p.dp)}</span><span class="${cls(ch)}">${ch.toFixed(2)}%</span><span>$${compact(t.volUsd || 0)}</span></div>`;
     }).join('') || `<div class="empty">${ui.pickTab === 'watch' ? 'Tap ☆ on a market to add it to your watchlist' : 'No markets found'}</div>`;
+  }
+  function marketList(tab, q) {
+    q = (q || '').trim().toLowerCase();
+    return Feed.symbols.filter(x => { const p = Feed.products[x]; return tab === 'watch' ? watch.has(x) : tab === 'rwa' ? p.tradfi : true; })
+      .filter(x => !q || x.toLowerCase().includes(q) || (Feed.products[x].shortDesc || '').toLowerCase().includes(q))
+      .sort((a, b) => ((Feed.tickers[b] || {}).volUsd || 0) - ((Feed.tickers[a] || {}).volUsd || 0)).slice(0, 200);
   }
   const togglePicker = (show) => { const el = $('#symPicker'); el.classList.toggle('hidden', !show); if (show) { renderPicker(); $('#symSearch').value = ''; renderPicker(); $('#symSearch').focus(); } };
   const toggleWatch = (x) => { if (watch.has(x)) watch.delete(x); else watch.add(x); saveUi(); renderSymBtn(); renderPicker(); };
@@ -308,6 +311,7 @@
 
   function selectSymbol(s, opts = {}) {
     const p = Feed.products[s]; if (!p) return;
+    const prevView = ui.view;
     if (p.kind === 'perp') { ui.perp = s; if (ui.view !== 'futures') { ui.view = 'futures'; } }
     else { ui.opt = s; ui.under = p.under; ui.expiry = p.expiry; if (ui.view !== 'options') ui.view = 'options'; }
     ui.sym = s; saveUi();
@@ -316,7 +320,8 @@
     if (opts.side) ui.side = opts.side;
     updateInterest(); renderSymBtn(); renderOrderPanel(); ui.cdOpen = false;
     if (!(ui.view === 'options' && ui.optMode === 'chain')) { loadCandles(); buildChartBar(); showChartSrc(); }
-    applyViewLight(); dirty(true);
+    if (prevView !== ui.view) applyView(); else applyViewLight(); // switching futures <-> options re-lays out the panels
+    dirty(true);
   }
   function applyViewLight() { [...$('#nav').children].forEach(a => a.classList.toggle('on', a.dataset.view === ui.view)); document.body.classList.toggle('optv', ui.view === 'options'); }
   function updateInterest() {
@@ -334,7 +339,9 @@
     put: ['oi', 'bq', 'bid', 'mk', 'ask', 'aq', 'delta', 'vol', 'oi6h', 'pos', 'gamma', 'vega', 'theta', 'chg', 'last', 'open', 'high', 'low'],
   };
   const PV = '<small>(Price / IV)</small>';
+  const MCOLS = { price: ['mk', 'ba'], oivol: ['oi', 'vol'], greeks: ['delta', 'gamma'] }; // from the strike outward
   const CDEF = {
+    ba: { h: '<span class="buy">BID</span><span class="sell">ASK</span>', g: 'ba', w: 'p' },
     oi: { h: 'OI', g: 'oi' }, aq: { h: 'Ask Qty', u: 1, g: 'qty' }, bq: { h: 'Bid Qty', u: 1, g: 'qty' },
     ask: { h: 'Ask' + PV, g: 'ba', w: 'p' }, bid: { h: 'Bid' + PV, g: 'ba', w: 'p' }, mk: { h: 'Mark' + PV, g: 'mark', w: 'p' },
     delta: { h: 'Delta' }, vol: { h: 'Volume' }, oi6h: { h: '6H OI Chg.' }, pos: { h: 'POS', u: 1 }, gamma: { h: 'Gamma' }, vega: { h: 'Vega' },
@@ -362,6 +369,12 @@
     }
     const ex = ensureExpiry();
     const yy = (e) => `${z2(new Date(e).getDate())} ${MON[new Date(e).getMonth()]} ${String(new Date(e).getFullYear()).slice(2)}`;
+    if (isMob()) {
+      $('#cbar').innerHTML = `<div class="crow"><div class="unds">${unders().map(u => `<button data-u="${u}" class="${u === ui.under ? 'on' : ''}">${u}</button>`).join('')}</div></div>
+        <div class="crow"><select class="csel" id="mExp">${ex.map(e => `<option value="${e}"${e === ui.expiry ? ' selected' : ''}>${yy(e)}</option>`).join('')}</select><span class="mexp"><small>Expires in</small><b>${ttl(ui.expiry).replace(/^0d:/, '')}</b></span></div>`;
+      $('#mExp').onchange = (e) => { ui.expiry = +e.target.value; ui.opt = pickAtm(); selectSymbol(ui.opt); renderChainBar(); renderChainTbl(true); };
+      chainKey = ''; return;
+    }
     $('#cbar').innerHTML = `<div class="crow">${modeSeg()}<div class="unds">${unders().map(u => `<button data-u="${u}" class="${u === ui.under ? 'on' : ''}">${u}</button>`).join('')}</div></div>
       <div class="crow"><div class="exps" id="exps">${ex.map(e => `<button data-e="${e}" class="${e === ui.expiry ? 'on' : ''}">${yy(e)}</button>`).join('')}</div>
         <button class="arr" data-sc="-1">‹</button><button class="arr" data-sc="1">›</button>
@@ -391,6 +404,7 @@
       case 'ask': return px('ask', t.ask, t.askIv);
       case 'bid': return px('bid', t.bid, t.bidIv);
       case 'mk': return px('mk', t.mark, t.iv);
+      case 'ba': return `<td class="bab ${c}"><span class="q bid" data-s="${sym}" data-px="${t.bid ? t.bid.toFixed(d) : ''}">${usd(t.bid, d)}</span><span class="q ask" data-s="${sym}" data-px="${t.ask ? t.ask.toFixed(d) : ''}">${usd(t.ask, d)}</span></td>`;
       case 'delta': return n(g.delta !== undefined, (g.delta || 0).toFixed(2));
       case 'vol': return n(t.volUsd, '$' + compact(t.volUsd));
       case 'oi6h': return n(t.oiChg6h, '$' + compact(t.oiChg6h));
@@ -411,13 +425,13 @@
     const syms = rows.flatMap(r => [r.call, r.put].filter(Boolean)).join(',');
     if (syms !== chainSyms) { chainSyms = syms; Feed.setChain(syms ? syms.split(',') : []); }
     const maxOi = Math.max(1, ...rows.flatMap(r => [r.call, r.put].map(x => x && Feed.tickers[x] ? Feed.tickers[x].oiUsd || 0 : 0)));
-    const callCols = COLS.call.filter(colOn).reverse(), putCols = COLS.put.filter(colOn);
+    const mob = isMob(), callCols = mob ? MCOLS[ui.cview].slice().reverse() : COLS.call.filter(colOn).reverse(), putCols = mob ? MCOLS[ui.cview] : COLS.put.filter(colOn);
     const head = (cols) => `<thead><tr>${cols.map(k => `<th class="c-${CDEF[k].w || 'n'}">${CDEF[k].h}${CDEF[k].u ? `<small>${esc(ui.under)}</small>` : ''}</th>`).join('')}</tr></thead><tbody>`;
     let hc = head(callCols), hp = head(putCols), hs = `<thead><tr><th class="hk" data-sort>Strike <span class="srt">⇕</span></th></tr></thead><tbody>`;
     if (ui.strikeDesc) rows.reverse();
     let spotDone = false;
     for (const r of rows) {
-      if (!spotDone && spot && (ui.strikeDesc ? r.strike <= spot : r.strike >= spot)) { const sr = '<tr class="spotrow"><td colspan="20"></td></tr>'; hc += sr; hp += sr; hs += sr; spotDone = true; }
+      if (!spotDone && spot && (ui.strikeDesc ? r.strike <= spot : r.strike >= spot)) { const sr = '<tr class="spotrow"><td colspan="20"></td></tr>'; hc += sr; hp += sr; hs += `<tr class="spotrow"><td><span class="spill">${esc(ui.under)} ${num1(spot, 1)}</span></td></tr>`; spotDone = true; }
       const cSel = up && r.call === up, pSel = up && r.put === up;
       const side = (sym, put, itm, cols, sel) => sym ? cols.map(k => chainCell(k, sym, put, itm ? 'itm' : '', maxOi, sel ? 'sel' : '')).join('') : `<td colspan="${cols.length}" class="mut">—</td>`;
       hc += `<tr class="${cSel ? 'selrow' : ''}">${side(r.call, false, r.strike < spot, callCols, cSel)}</tr>`;
@@ -426,7 +440,8 @@
     }
     $('#tC').innerHTML = hc + '</tbody>'; $('#tP').innerHTML = hp + '</tbody>'; $('#tS').innerHTML = hs + '</tbody>';
     if (hoverRow >= 0) ['#tC', '#tS', '#tP'].forEach(id => { const r = $(id).querySelectorAll('tbody tr')[hoverRow]; if (r) r.classList.add('hov'); });
-    $('#cinfo').innerHTML = `<span>Calls</span><span class="cmid">${esc(ui.under)} <b class="buy">$${num1(spot, 1)}</b><em></em>Time to Expiry <b>${ttl(ui.expiry)}</b></span><span class="r">Puts</span>`;
+    if (mob) $('#cinfo').innerHTML = `<span>Calls</span><span class="cview">${[['price', 'Price'], ['oivol', 'OI/Vol'], ['greeks', 'Greeks']].map(([k, l]) => `<a data-cv="${k}" class="${k === ui.cview ? 'on' : ''}">${l}</a>`).join('')}</span><span class="r">Puts</span>`;
+    else $('#cinfo').innerHTML = `<span>Calls</span><span class="cmid">${esc(ui.under)} <b class="buy">$${num1(spot, 1)}</b><em></em>Time to Expiry <b>${ttl(ui.expiry)}</b></span><span class="r">Puts</span>`;
     const colKey = callCols.join();
     if (chainCalls !== colKey) { chainCalls = colKey; $('#cC').scrollLeft = $('#cC').scrollWidth; } // calls open scrolled to the strike side
     if (scroll || chainKey !== ui.under + ui.expiry) { chainKey = ui.under + ui.expiry; const sr = $('#tP .spotrow'); if (sr) $('#cP').scrollTop = sr.offsetTop - $('#cP').clientHeight / 2; }
@@ -441,9 +456,10 @@
     if (e.target.closest('[data-sort]')) { ui.strikeDesc = !ui.strikeDesc; renderChainTbl(true); return; }
     const u = e.target.closest('[data-u]'); if (u) { ui.under = u.dataset.u; ui.expiry = null; ensureExpiry(); ui.opt = pickAtm(); selectSymbol(ui.opt); renderChainBar(); renderChainTbl(true); return; }
     const ex = e.target.closest('[data-e]'); if (ex) { ui.expiry = +ex.dataset.e; ui.opt = pickAtm(); selectSymbol(ui.opt); renderChainBar(); renderChainTbl(true); return; }
-    const q = e.target.closest('td.q'); if (q && q.dataset.s) { selectSymbol(q.dataset.s, { price: q.dataset.px || '', side: sideOf(q) }); renderChainTbl(); return; }
+    const cv = e.target.closest('[data-cv]'); if (cv) { ui.cview = cv.dataset.cv; chainCalls = null; renderChainTbl(); return; }
+    const q = e.target.closest('.q'); if (q && q.dataset.s) { selectSymbol(q.dataset.s, { price: q.dataset.px || '', side: sideOf(q) }); if (isMob()) setMTab('trade'); else renderChainTbl(); return; }
     // any other cell selects its contract; the strike keeps the call/put you're on
-    const cell = e.target.closest('.cbody td[data-s]'); if (cell) { selectSymbol(cell.dataset.s); renderChainTbl(); return; }
+    const cell = e.target.closest('.cbody td[data-s]'); if (cell) { selectSymbol(cell.dataset.s); if (isMob()) setMTab('trade'); else renderChainTbl(); return; }
     const st = e.target.closest('td.strike'); if (st) { const put = P() && P().kind === 'put', s2 = (put ? st.dataset.p : st.dataset.c) || st.dataset.c || st.dataset.p; if (s2) { selectSymbol(s2); renderChainTbl(); } }
   });
   $('#chain').addEventListener('change', (e) => {
@@ -469,13 +485,13 @@
         <div class="fpx ${lastDir}"><b>${usd(px, p.dp)}</b><span>${lastDir === 'sell' ? '↓' : '↑'}</span></div>
         <div><small>24h Change</small><span class="${cls(ch)}">${ch.toFixed(2)}%</span></div>
         <div><small class="dl">Index Price</small><span>${num1(Engine.spotOf(ui.sym), 1)}</span></div>
-        <div><small>24h High</small><span>${usd(t.high, p.dp)}</span></div>
-        <div><small>24h Low</small><span>${usd(t.low, p.dp)}</span></div>
+        <div class="st-hl"><small>24h High</small><span>${usd(t.high, p.dp)}</span></div>
+        <div class="st-hl"><small>24h Low</small><span>${usd(t.low, p.dp)}</span></div>
         <div><small>24h Vol.</small><span>${usdM(t.volUsd)}</span></div>
         <div><small>OI</small><span>${usdM(t.oiUsd)}</span></div>
         <div><small class="dl">Funding (8h) / Countdown</small><span>${(t.funding * 100).toFixed(4)}% / ${z2(h)}h:${z2(m)}m:${z2(s)}s</span></div>`;
-      $('#cdet').innerHTML = `<a data-cd>Contract Details <span class="car">⌄</span></a>${ui.cdOpen ? cdHtml(p) : ''}`;
-      document.title = `${fmt(px, p.dp)} ${p.symbol} – Delta Demo`;
+      $('#cdet').innerHTML = `<a class="smore" data-more>⋯</a>${ui.moreOpen ? `<div class="pop spec morepop"><div><span>24h High</span><b>${usd(t.high, p.dp)}</b></div><div><span>24h Low</span><b>${usd(t.low, p.dp)}</b></div></div>` : ''}<a data-cd>Contract Details <span class="car">⌄</span></a>${ui.cdOpen ? cdHtml(p) : ''}`;
+      document.title = `${lastDir === 'sell' ? '▼' : '▲'} ${px.toFixed(p.dp)} USD | Trade ${p.shortDesc || p.symbol} Swaps | Delta Demo`;
     } else {
       const g = t.greeks || {}, gk = (k) => g[k] !== undefined ? g[k].toFixed(k === 'gamma' ? 5 : 2) : '--';
       $('#ctrHdr').innerHTML = `<div class="ch1"><span class="star">☆</span><b class="csym">${esc(p.symbol)}</b><span class="sp"></span>
@@ -486,7 +502,8 @@
         <div class="ch2"><div><small>24h Change</small><b class="${cls(ch)}">${sgn(ch)}%</b></div><div><small>Price</small><b class="${lastDir}">${usd(px, p.dp)}</b></div>
           <div><small class="dl">Index Price</small><b>${num1(Engine.spotOf(ui.sym), 1)}</b></div><div><small>Mark IV</small><b>${t.iv ? (t.iv * 100).toFixed(1) + '%' : '--'}</b></div>
           <div><small>24h Vol.</small><b>$${compact(t.volUsd || 0)}</b></div></div>`;
-      document.title = `${p.symbol} ${fmt(t.mark, p.dp)} – Delta Demo`;
+      const un = ((Feed.products[p.under + 'USD'] || {}).shortDesc || p.under).replace(/s*Perpetual$/i, '');
+      document.title = `Trade ${un} ${p.kind === 'call' ? 'Call' : 'Put'} Options Chain | Delta Demo`;
     }
   }
 
@@ -495,8 +512,11 @@
     const k = b.dataset.hp === 'grk' ? 'grkOpen' : 'specOpen', v = !ui[k]; ui.grkOpen = ui.specOpen = false; ui[k] = v; renderStats();
   };
   document.addEventListener('mousedown', (e) => { if ((ui.grkOpen || ui.specOpen) && !e.target.closest('.hpop')) { ui.grkOpen = ui.specOpen = false; renderStats(); } });
-  $('#cdet').onclick = (e) => { if (e.target.closest('[data-cd]')) { ui.cdOpen = !ui.cdOpen; renderStats(); } };
-  document.addEventListener('mousedown', (e) => { if (ui.cdOpen && !e.target.closest('#cdet')) { ui.cdOpen = false; renderStats(); } });
+  $('#cdet').onclick = (e) => {
+    if (e.target.closest('[data-cd]')) { ui.cdOpen = !ui.cdOpen; ui.moreOpen = false; renderStats(); }
+    if (e.target.closest('[data-more]')) { ui.moreOpen = !ui.moreOpen; ui.cdOpen = false; renderStats(); }
+  };
+  document.addEventListener('mousedown', (e) => { if ((ui.cdOpen || ui.moreOpen) && !e.target.closest('#cdet')) { ui.cdOpen = ui.moreOpen = false; renderStats(); } });
   function cdHtml(p) {
     const pct = (v) => +(v * 100).toFixed(4), u = esc(p.unit || p.base), spot = Engine.spotOf(ui.sym) || T().mark;
     const lim = p.notionalLimit && spot ? `${(p.notionalLimit / spot).toFixed(3)} ${u},  ${fmt(p.notionalLimit, 0)} USD` : `${fmt(p.posLimit, 0)} contracts`;
@@ -591,10 +611,10 @@
     const p = P(), a = Engine.active, f = ui.f, ty = ui.otype, sd = ui.side, lev = Engine.levOf(a, ui.sym), L = ui.lev;
     if (ty === 'stop_market') ui.otype = 'stop_limit';
     const isStop = ty === 'stop_limit' || ty === 'tp_limit', isLimit = ty !== 'market', ddLbl = (OTYPES.find(x => x[0] === ty) || OTYPES[0])[1];
-    const levs = levSteps(p), draft = L.draft || lev, li = levs.reduce((b, x, i) => (x <= draft ? i : b), 0), opt = p.kind !== 'perp';
+    const levs = levSteps(p), draft = L.draft || lev, li = levs.reduce((b, x, i) => (x <= draft ? i : b), 0), opt = p.kind !== 'perp', longLbl = !opt || isMob();
     const stp = (k) => `<span class="stp"><i data-st="${k}" data-d="1">▴</i><i data-st="${k}" data-d="-1">▾</i></span>`;
     $('#orderPanel').innerHTML = `<div class="dop">
-      <div class="dside"><a data-sd="buy" class="b ${sd === 'buy' ? 'on' : ''}">Buy</a><a data-sd="sell" class="s ${sd === 'sell' ? 'on' : ''}">Sell</a></div>
+      <div class="dside"><a data-sd="buy" class="b ${sd === 'buy' ? 'on' : ''}">${longLbl ? 'Buy | Long' : 'Buy'}</a><a data-sd="sell" class="s ${sd === 'sell' ? 'on' : ''}">${longLbl ? 'Sell | Short' : 'Sell'}</a></div>
       <div class="dlev ${L.open ? 'open' : ''}"><div class="dlev-h" data-lv="toggle"><span>Leverage</span>${L.open ? '<b class="car">⌃</b>' : `<b class="acc">${lev}x <span class="car">▾</span></b>`}</div>
         ${L.open ? `<div class="dinp acc"><input id="lvN" inputmode="numeric" value="${draft}x"></div>
         <div class="dsl"><input type="range" id="lvR" min="0" max="${levs.length - 1}" step="1" value="${li}"><div class="dsl-l">${levs.map(x => `<span>${x}x</span>`).join('')}</div></div>
@@ -855,7 +875,7 @@
     if (!pending) return;
     pending = false;
     renderStats(); renderBook(); renderPicker();
-    updateOrderDyn(); renderAcct();
+    updateOrderDyn(); renderAcct(); if (isMob()) renderMobile();
     if (!optView() || ui.optMode === 'chart') { if (curSrc() === 'depth') drawDepth(); else renderOneClick(); }
     const now = performance.now();
     if (ui.view === 'options' && ui.optMode === 'chain' && now - lastChain > 400) { renderChainTbl(); lastChain = now; }
@@ -873,16 +893,84 @@
       return;
     }
     if (kind === 'toast') return toast(p.type, p.msg);
-    if (kind === 'conn') { toast(Client.connected ? 'success' : 'error', Client.connected ? 'Connected to server' : 'Server connection lost – reconnecting'); return; }
+    if (kind === 'conn') return connToast();
     if (kind === 'accounts') renderOrderPanel();
     updateInterest(); refreshLines(); dirty(true);
   });
+  /* quick reconnects stay silent: only say the connection was lost if it isn't back within 4s */
+  let connTimer = null, lostShown = false;
+  function connToast() {
+    if (!Client.connected) {
+      if (!connTimer && !lostShown) connTimer = setTimeout(() => { connTimer = null; if (!Client.connected) { lostShown = true; toast('error', 'Server connection lost – reconnecting'); } }, 4000);
+      return;
+    }
+    if (connTimer) { clearTimeout(connTimer); connTimer = null; }
+    if (lostShown) { lostShown = false; toast('success', 'Reconnected to server'); }
+  }
   setInterval(() => dirty(), 1000);
   window.addEventListener('resize', () => dirty());
+
+  /* ================= phones and small tablets: Delta's mobile app layout (≤ 900px) ================= */
+  const MQ = window.matchMedia('(max-width: 900px)');
+  function isMob() { return MQ.matches; }
+  const MTABS = [['markets', 'Markets', '<path d="M7 3v18M17 3v18"/><rect x="4.5" y="7" width="5" height="9" rx="1"/><rect x="14.5" y="6" width="5" height="7" rx="1"/>'],
+    ['trade', 'Trade', '<circle cx="12" cy="12" r="8"/><path d="M12 8l4 4-4 4-4-4z"/>'], ['charts', 'Charts', '<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7 15l3.5-4 3 2.5L17 9"/>'],
+    ['portfolio', 'Portfolio', '<path d="M4 8h16v11H4z"/><path d="M9 8V5h6v3"/>']];
+  const MK_TABS = [['watch', 'Watchlist'], ['futures', 'Futures'], ['options', 'Options'], ['rwa', 'RWA Tokens']];
+  function setMTab(t) {
+    ui.mtab = t;
+    if (ui.view === 'options') { const want = t === 'charts' ? 'chart' : 'chain'; if (ui.optMode !== want) { ui.optMode = want; applyView(); } }
+    applyMobile(); scrollTo(0, 0);
+  }
+  function applyMobile() {
+    const m = isMob(), b = document.body.classList;
+    if (ui.view !== 'options' && ui.mk === 'options') ui.mk = 'futures'; // Markets follows the view you're on
+    b.toggle('mob', m);
+    for (const [t] of MTABS) b.toggle('mt-' + t, m && ui.mtab === t);
+    b.toggle('mk-opt', m && ui.mtab === 'markets' && ui.mk === 'options');
+    if (!m) return;
+    $('#mnav').innerHTML = MTABS.map(([k, l, ic]) => `<a data-mt="${k}" class="${k === ui.mtab ? 'on' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">${ic}</svg>${l}</a>`).join('');
+    renderMobile();
+  }
+  function renderMobile() {
+    const p = P(), t = T(); if (!p) return;
+    // Markets: Watchlist / Futures / Options / RWA Tokens; Options shows the T-shape chain
+    $('#mMk').innerHTML = `<div class="pk-tabs">${MK_TABS.map(([k, l]) => `<a data-mk="${k}" class="${k === ui.mk ? 'on' : ''}">${l}</a>`).join('')}</div>` + (ui.mk === 'options' ? '' :
+      `<div class="mk-head"><span>Name</span><span>Last Price/ Vol.</span><span>24h Chg.</span></div><div class="mk-list">${marketList(ui.mk, '').map(x => {
+        const q = Feed.products[x], k = Feed.tickers[x] || {}, ch = k.open ? (k.last - k.open) / k.open * 100 : 0;
+        return `<div class="mk-row" data-ms="${x}"><span class="star ${watch.has(x) ? 'on' : ''}" data-w="${x}">${watch.has(x) ? '★' : '☆'}</span>
+          <span class="mk-n"><b>${esc(x)}</b> <i class="levb">${q.maxLev}x</i><small>${esc(q.shortDesc || q.desc)}</small></span>
+          <span class="mk-p"><b>${usd(k.last, q.dp)}</b><small>$${compact(k.volUsd || 0)}</small></span><span class="${cls(ch)}">${ch.toFixed(2)}%</span></div>`;
+      }).join('') || `<div class="empty">${ui.mk === 'watch' ? 'Tap ☆ on a market to add it to your watchlist' : 'No markets'}</div>`}</div>`);
+    // symbol bar over Trade / Charts
+    const px = t.last || t.mark, ch = t.open && px ? (px - t.open) / t.open * 100 : 0, opt = p.kind !== 'perp', usdM = (v) => '$' + ((v || 0) / 1e6).toFixed(1) + 'M';
+    const sub = opt ? `${p.under} ${p.kind === 'call' ? 'Call' : 'Put'}` : (p.shortDesc || p.desc);
+    const ms = Math.max(0, Engine.nextFunding() - Date.now()), fc = `${z2(Math.floor(ms / 3.6e6))}h:${z2(Math.floor(ms % 3.6e6 / 6e4))}m:${z2(Math.floor(ms % 6e4 / 1e3))}s`;
+    const stats = opt ? [['Index Price', '$' + num1(Engine.spotOf(ui.sym), 1)], ['24h Vol.', usdM(t.volUsd)], ['OI', usdM(t.oiUsd)]]
+      : [['24h Vol.', usdM(t.volUsd)], ['OI', usdM(t.oiUsd)], ['Funding (8h)', `${((t.funding || 0) * 100).toFixed(4)}% / ${fc}`]];
+    $('#mBar').innerHTML = `<div class="mb1"><span class="star ${watch.has(ui.sym) ? 'on' : ''}" data-w="${ui.sym}">${watch.has(ui.sym) ? '★' : '☆'}</span>
+        <a class="mb-sym" data-msym><b>${esc(p.symbol)} <span class="car">⌄</span></b><small>${esc(sub)}</small></a>
+        <span class="mb-px ${lastDir}"><b>${usd(px, p.dp)} ${lastDir === 'sell' ? '↓' : '↑'}</b><small class="${cls(ch)}">${ch.toFixed(2)}%</small></span></div>
+      <div class="mb2">${stats.map(([l, v]) => `<div><small>${l}</small><b>${v}</b></div>`).join('')}<span class="sp"></span>
+        <a class="mb-go" data-mt="${ui.mtab === 'charts' ? 'trade' : 'charts'}">${ui.mtab === 'charts' ? 'Trade' : 'Chart'}</a></div>`;
+    // Portfolio: account summary over the positions tables
+    const a = Engine.active, sm = Engine.summary(a), pnl = sm.equity - a.initial;
+    $('#mPort').innerHTML = `<div class="pm-stats"><div><small>Equity</small><b>${fmt(sm.equity)}</b></div><div><small>Available</small><b>${fmt(sm.available)}</b></div><div><small>Unrealised PnL</small><b class="${cls(sm.upnl)}">${sgn(sm.upnl)}</b></div><div><small>Total PnL</small><b class="${cls(pnl)}">${sgn(pnl)}</b></div></div>`;
+  }
+  document.addEventListener('click', (e) => {
+    if (!isMob()) return;
+    const w = e.target.closest('#mMk [data-w], #mBar [data-w]'); if (w) { toggleWatch(w.dataset.w); renderMobile(); return; }
+    const mt = e.target.closest('[data-mt]'); if (mt) return setMTab(mt.dataset.mt);
+    if (e.target.closest('[data-msym]')) { ui.mk = P().kind === 'perp' ? 'futures' : 'options'; return setMTab('markets'); }
+    const mk = e.target.closest('[data-mk]'); if (mk) { ui.mk = mk.dataset.mk; if (ui.mk === 'options' && ui.view !== 'options') setView('options'); ui.optMode = 'chain'; applyView(); return applyMobile(); }
+    const row = e.target.closest('[data-ms]'); if (row) { selectSymbol(row.dataset.ms); return setMTab('charts'); }
+  });
+  // switching between phone and desktop widths re-lays out the page
+  MQ.addEventListener('change', () => { if (!isMob() && ui.view === 'options') ui.optMode = 'chain'; applyView(); applyMobile(); renderOrderPanel(); if (ui.view === 'options') { renderChainBar(); renderChainTbl(true); } dirty(true); });
 
   /* ================= boot ================= */
   if (ui.view === 'options' && unders().length) { if (!unders().includes(ui.under)) ui.under = unders()[0]; ensureExpiry(); if (!ui.opt || !Feed.products[ui.opt]) ui.opt = pickAtm(); ui.sym = ui.opt; }
   else { ui.view = 'futures'; ui.sym = ui.perp; }
-  renderOrderPanel(); updateInterest(); applyView(); dirty(true);
+  renderOrderPanel(); updateInterest(); applyView(); applyMobile(); dirty(true);
   Feed.emit('status');
 })();
