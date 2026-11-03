@@ -181,9 +181,9 @@ body.optv .ctr-panel{display:flex;grid-column:2/4;grid-row:1}
 body.optv .book-panel{grid-column:2;grid-row:2}
 body.optv .order-panel{grid-column:3;grid-row:2;overflow:auto}
 body.optv .bottom-panel{grid-column:1/4;grid-row:3}
-body.optv #bookTabs,body.optv #tradesView{display:none}
-body.optv .panel{background:var(--dbg)}
-body.optv #bookView{display:flex;flex-direction:column;overflow:hidden}
+#bookTabs,#tradesView{display:none}
+.panel{background:var(--dbg)}
+#bookView{display:flex;flex-direction:column;overflow:hidden}
 .ctr-panel{display:none;flex-direction:column;gap:10px;padding:10px 14px 12px}
 .ch1{display:flex;align-items:center;gap:6px;font-size:13px}.ch1 .star{color:var(--mut);font-size:16px;margin-right:4px}
 .ch1 .csym{font-size:15px;font-weight:600}.ch1 .lot{margin-left:22px}
@@ -365,3 +365,54 @@ body.optv .ctr-panel{position:relative;z-index:6}
 .pm-new:hover{background:#f7861c12;border-color:var(--dacc)}
 .mnote{color:var(--mut);font-size:12.5px;margin:-6px 0 6px;line-height:1.5}
 .btn.del{background:var(--dsell);border-color:var(--dsell);color:#fff}
+
+/* ---- page scrolls like Delta: the trading area fills the window (Positions tabs peek at the bottom), positions panel below ---- */
+html,body{height:auto;min-height:100vh;overflow-x:hidden;overflow-y:visible}
+.shell{flex:none}
+.grid{flex:none;grid-template-rows:minmax(0,1fr) 420px;height:calc(max(560px, 100vh - 187px) + 421px)}
+body.optv .grid{grid-template-rows:auto minmax(0,1fr) 420px;height:calc(max(640px, 100vh - 130px) + 421px)}
+
+/* ---- futures: Delta layout (chart | book + trades | order form), ticker strip, market picker, contract details ---- */
+.grid{grid-template-columns:minmax(0,1fr) 290px 300px}
+body:not(.optv) .order-panel{grid-row:1}
+body:not(.optv) .bottom-panel{grid-column:1/4}
+.tickerbar{background:var(--dbg);border-bottom:1px solid var(--dln);gap:24px;padding:0 16px}
+.symbtn{background:none;border:0;padding:0;gap:8px;font-size:16px}
+.symbtn .star{color:var(--mut);font-size:16px;cursor:pointer}.star.on{color:var(--dacc)}
+.symbtn .car{color:var(--mut);font-size:13px}
+.stats{gap:28px;align-items:center}
+.stats div{gap:3px}.stats small{font-size:11.5px;color:var(--mut)}.stats span{font-size:13px;font-variant-numeric:tabular-nums}
+.stats .fpx{flex-direction:row;align-items:center;gap:4px}.stats .fpx b{font-size:18px;font-weight:600}
+.stats .fpx.buy,.stats .fpx.buy b{color:var(--dbuy)}.stats .fpx.sell,.stats .fpx.sell b{color:var(--dsell)}
+.cdet{position:relative;flex:none}.cdet>a{color:#c9cdd2;cursor:pointer;font-size:12.5px}.cdet .car{font-size:11px;color:var(--mut)}
+.pop.cdpop{top:32px;right:0;width:360px}
+.pop.cdpop .cdbtn{display:block;text-align:center;margin:10px -14px -8px;padding:11px 0;border-top:1px solid var(--dln);color:var(--tx)}
+/* market picker side panel */
+.picker{left:0;top:56px;width:min(660px,100vw);max-height:none;height:calc(100vh - 112px);background:var(--dbg);border:0;border-right:1px solid var(--dln);border-radius:0;box-shadow:12px 0 30px #000a;z-index:70}
+.pk-tabs{display:flex;gap:26px;padding:0 16px;border-bottom:1px solid var(--dln);flex:none}
+.pk-tabs a{padding:13px 0 11px;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;font-size:14px}
+.pk-tabs a.on{color:var(--tx);border-bottom-color:var(--dacc)}
+.pk-bar{display:flex;align-items:center;gap:16px;padding:14px 16px;flex:none}
+.pk-q{width:260px;height:34px;border-color:var(--dacc)}
+.pk-oc{margin-left:auto;color:var(--dacc);cursor:pointer;font-size:13px}
+.pk-head,.pk-row{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;align-items:center;padding:0 16px;font-variant-numeric:tabular-nums}
+.pk-head{color:var(--mut);font-size:12px;padding-bottom:8px;border-bottom:1px solid var(--dln);flex:none}
+.pk-head span:nth-child(n+2),.pk-row>span:nth-child(n+2){text-align:right}
+.pk-list{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#3a3e46 transparent}
+.pk-row{height:56px;border-bottom:1px solid #23262c;cursor:pointer}
+.pk-row:hover{background:#ffffff08}.pk-row.on{background:#f7861c0f}
+.pk-c{display:flex;align-items:center;gap:12px}
+.pk-c .star{color:var(--mut);cursor:pointer;font-size:15px}
+.pk-c b{font-weight:600}.pk-c small{display:block;color:var(--mut);font-size:11.5px;margin-top:2px}
+.pk-c .levb{font-style:normal;font-size:10.5px;padding:1px 5px;margin-left:4px;border:1px solid #f7861c66;background:none}
+
+/* ---- header dropdowns (Delta ⌄ greeks, Lot Size ⌄ specs, Contract Details ⌄): Delta's roomier panels ---- */
+.pop{background:#2a2d34;border:1px solid #363a42;border-radius:6px;box-shadow:0 14px 34px #000c;padding:6px 16px;font-size:13px}
+.pop div{padding:9px 0;font-size:13px;color:#9aa0a8;gap:28px}
+.pop b{font-weight:500;line-height:1.45}
+.pop.grk{top:28px;right:-12px;width:220px}
+.pop.spec{top:28px;right:-8px;width:400px}
+.pop.spec h4{font-size:14px;font-weight:600;margin:10px 0 4px;color:var(--tx)}
+.pop.spec .cdbtn,.pop.cdpop .cdbtn{display:block;text-align:center;margin:8px -16px -6px;padding:12px 0;border-top:1px solid #363a42;color:var(--tx);font-size:13px}
+.pop .cdbtn:hover{background:#ffffff08}
+.pop.cdpop{top:32px;right:0;width:400px}

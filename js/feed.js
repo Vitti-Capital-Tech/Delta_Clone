@@ -30,6 +30,10 @@
       maxLev: Math.max(1, Math.floor(100 / imr)), defLev: Math.round(+p.default_leverage) || 10,
       maxLevNotional: +p.max_leverage_notional || 0, imScale: +p.initial_margin_scaling_factor || 0,
       index: p.spot_index ? p.spot_index.symbol : '', maxOi: (p.product_specs && +p.product_specs.max_oi_usd) || 0,
+      // ui_config is what Delta's own UI uses: leverage slider steps, order-book grouping, default chart candle
+      levSlider: (p.ui_config && p.ui_config.leverage_slider_values) || null, groups: (p.ui_config && p.ui_config.price_clubbing_values) || null,
+      shortDesc: (p.short_description || '').replace(/\s+/g, ' ').trim(), notionalLimit: +p.position_notional_limit || 0,
+      tradfi: !!(p.product_specs && p.product_specs.top_tag === 'tradfi'),
       imr: imr / 100, mmr: +p.maintenance_margin / 100,
       taker: +p.taker_commission_rate, maker: +p.maker_commission_rate,
       posLimit: p.position_size_limit || 1e9, liqPenalty: +p.liquidation_penalty_factor || 0.5,
@@ -168,11 +172,11 @@
   const parseTrade = (t) => ({ price: +t.price, size: +t.size, side: t.buyer_role === 'taker' ? 'buy' : 'sell', ts: Math.floor(t.timestamp / 1e6) });
 
   /* ---- candles ---- */
-  const RES = { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '1d': 86400, '1w': 604800 };
-  Feed.RES = { ...RES, '10m': 600, '2w': 1209600 };
+  const RES = { '5s': 5, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '1d': 86400, '1w': 604800 };
+  Feed.RES = { ...RES, '15s': 15, '30s': 30, '10m': 600, '2w': 1209600 };
   /* Delta's chart also offers 10m and 2W, which the API doesn't serve: build them from 5m / 1w bars.
      symbol can be a contract, MARK:<contract> (mark price) or an index such as .DEXBTUSD. */
-  const MERGED = { '10m': ['5m', 600, 0], '2w': ['1w', 1209600, 345600] }; // 2W buckets start on a Monday, like 1W
+  const MERGED = { '15s': ['5s', 15, 0], '30s': ['5s', 30, 0], '10m': ['5m', 600, 0], '2w': ['1w', 1209600, 345600] }; // 2W buckets start on a Monday, like 1W
   Feed.candles = async function (symbol, res, endSec) {
     const m = MERGED[res];
     if (m) {
