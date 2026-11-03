@@ -18,7 +18,7 @@
 
   const saved = (() => { try { return JSON.parse(localStorage.getItem('dx_ui2')) || {}; } catch (_) { return {}; } })();
   const ui = {
-    view: saved.view || 'futures', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
+    view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
     sym: null, res: saved.res || '5m', ctype: saved.ctype || 'candles', otype: 'limit', side: 'buy', botTab: 'positions', bookTab: 'book',
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
     lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 1, obgOpen: false, strikeDesc: false,
@@ -816,59 +816,64 @@
     const ch = (act.name.trim()[0] || '?').toUpperCase(), html = `<span class="avatar" style="${avatarStyle(act.name)}">${esc(ch)}</span><span class="pname">${esc(act.name)}</span><span class="caret">▾</span>`;
     const b = $('#profBtn'); if (b.dataset.h !== html) { b.dataset.h = html; b.innerHTML = html; }
   }
+  const IC = {
+    edit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5l3 3L5 14H2v-3z"/><path d="M9 4l3 3"/></svg>',
+    reset: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></svg>',
+    del: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11"/><path d="M6 4V2.5h4V4"/><path d="M4 4l.7 9.5h6.6L12 4"/><path d="M6.8 7v4M9.2 7v4"/></svg>',
+  };
+  const initial = (n) => esc((n.trim()[0] || '?').toUpperCase());
   function renderProfMenu() {
-    const list = Engine.state.accounts, act = Engine.active, s = Engine.summary(act);
-    $('#profMenu').innerHTML = `<div class="mhead"><span class="avatar big" style="${avatarStyle(act.name)}">${esc((act.name.trim()[0] || '?').toUpperCase())}</span><div><b>${esc(act.name)}</b><small class="mut" style="display:block">Equity ${fmt(s.equity)} USD</small></div></div>
-      <div class="sec2">Switch account</div>` +
-      list.map(a => { const q = Engine.summary(a); return `<div class="row ${a.id === act.id ? 'on' : ''}" data-sw="${a.id}"><span>${a.id === act.id ? '✓ ' : ''}<b>${esc(a.name)}</b></span><span style="text-align:right">${fmt(q.equity)}<br><small class="${cls(q.equity - a.initial)}">${sgn(q.equity - a.initial)}</small></span></div>`; }).join('') +
-      `<div class="mf"><div class="sec2">Edit "${esc(act.name)}"</div>
-        <div class="row" data-pa="rn"><span>Rename</span></div><div class="row" data-pa="dp"><span>Add funds</span></div>
-        <div class="row" data-pa="rs"><span>Reset account</span></div><div class="row dng" data-pa="dl"><span>Delete account</span></div></div>
-      <div class="mf"><div class="row" data-pa="new"><b>+ New demo account</b></div><div class="row" data-pa="all"><span>Manage all accounts</span></div></div>`;
+    const list = Engine.state.accounts, act = Engine.active, s = Engine.summary(act), pnl = s.equity - act.initial, one = list.length < 2;
+    $('#profMenu').innerHTML = `<div class="pm-head"><span class="avatar big" style="${avatarStyle(act.name)}">${initial(act.name)}</span>
+        <div class="pm-who"><b>${esc(act.name)}</b><small>Demo account · paper trading</small></div></div>
+      <div class="pm-stats"><div><small>Equity</small><b>${fmt(s.equity)}</b></div><div><small>Available</small><b>${fmt(s.available)}</b></div><div><small>Total PnL</small><b class="${cls(pnl)}">${sgn(pnl)}</b></div></div>
+      <div class="pm-sec"><span>Accounts</span><span class="pm-cnt">${list.length}</span></div>
+      <div class="pm-list">${list.map(a => { const q = Engine.summary(a), p = q.equity - a.initial; return `<div class="pm-row ${a.id === act.id ? 'on' : ''}" data-sw="${a.id}" title="${a.id === act.id ? 'Current account' : 'Switch to ' + esc(a.name)}">
+          <span class="avatar sm" style="${avatarStyle(a.name)}">${initial(a.name)}</span>
+          <div class="pm-n"><b>${esc(a.name)}</b><small>${fmt(q.equity)} USD · <span class="${cls(p)}">${sgn(p)}</span></small></div>
+          <div class="pm-act"><button data-pa="ed" data-id="${a.id}" title="Edit name and balance">${IC.edit}</button><button data-pa="rs" data-id="${a.id}" title="Reset account">${IC.reset}</button>
+            <button data-pa="dl" data-id="${a.id}" class="dng" title="${one ? 'Keep at least one account' : 'Delete account'}" ${one ? 'disabled' : ''}>${IC.del}</button></div></div>`; }).join('')}</div>
+      <button class="pm-new" data-pa="new">+ New account</button>`;
   }
   $('#hdrAcct').addEventListener('click', (e) => {
     if (e.target.closest('#profBtn')) { const m = $('#profMenu'); if (m.classList.contains('hidden')) { renderProfMenu(); m.classList.remove('hidden'); } else m.classList.add('hidden'); }
   });
   $('#hdrAcct').addEventListener('mousedown', (e) => {
     const m = $('#profMenu'); if (!m || !e.target.closest('#profMenu')) return;
-    const sw = e.target.closest('[data-sw]'), pa = e.target.closest('[data-pa]');
-    if (sw) { m.classList.add('hidden'); if (sw.dataset.sw !== Engine.active.id) { Engine.switchAccount(sw.dataset.sw); toast('info', `Switched to ${Engine.active.name}`); } return; }
-    if (!pa) return;
-    m.classList.add('hidden'); const id = Engine.active.id;
-    ({ rn: () => acctRename(id), dp: () => acctFund(id), rs: () => acctReset(id), dl: () => acctDelete(id), new: newAccountDialog, all: manageAccounts })[pa.dataset.pa]();
+    const pa = e.target.closest('[data-pa]');
+    if (pa) {
+      if (pa.disabled) return;
+      m.classList.add('hidden'); const id = pa.dataset.id;
+      return ({ ed: () => acctEdit(id), rs: () => acctReset(id), dl: () => acctDelete(id), new: newAccountDialog })[pa.dataset.pa]();
+    }
+    const sw = e.target.closest('[data-sw]');
+    if (sw) { m.classList.add('hidden'); if (sw.dataset.sw !== Engine.active.id) { Engine.switchAccount(sw.dataset.sw); toast('info', `Switched to ${Engine.active.name}`); } }
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('.prof')) { const m = $('#profMenu'); if (m) m.classList.add('hidden'); } });
-  function acctRename(id, after) { const a = Engine.state.accounts.find(x => x.id === id); ask('Rename account', [{ k: 'name', label: 'Name', value: a.name, text: true }], async v => { await Engine.renameAccount(id, v.name); after && after(); }); }
-  function acctFund(id, after) { ask('Add funds', [{ k: 'amt', label: 'Amount (USD)', value: 1000 }], async v => { await Engine.deposit(id, +v.amt); toast('success', 'Funds added'); after && after(); }); }
-  function acctReset(id, after) { const a = Engine.state.accounts.find(x => x.id === id); ask('Reset account', [{ k: 'bal', label: 'New starting balance (USD) – clears positions, orders and history', value: a.initial }], async v => { await Engine.resetAccount(id, +v.bal); toast('info', 'Account reset'); after && after(); }); }
-  function acctDelete(id, after) {
-    const a = Engine.state.accounts.find(x => x.id === id);
-    ask(`Delete "${a.name}"? Type OK to confirm`, [{ k: 'c', label: 'This removes its positions, orders and history permanently', value: '', text: true }], async v => {
-      if (v.c.trim().toUpperCase() !== 'OK') return toast('info', 'Delete cancelled');
-      const r = await Engine.deleteAccount(id); if (!r.ok) return toast('error', r.error); toast('info', 'Account deleted'); after && after();
-    });
+  const acct = (id) => Engine.state.accounts.find(x => x.id === id);
+  function acctEdit(id) {
+    const a = acct(id);
+    ask('Edit account', [{ k: 'name', label: 'Name', value: a.name, text: true }, { k: 'bal', label: 'Wallet balance (USD)', value: +a.balance.toFixed(2) }], async v => {
+      const name = v.name.trim(), bal = +v.bal;
+      if (!name) return toast('error', 'Name cannot be empty');
+      if (name !== a.name) await Engine.renameAccount(id, name);
+      if (Math.abs(bal - a.balance) > 1e-9) { const r = await Engine.setBalance(id, bal); if (!r.ok) return toast('error', r.error); }
+      toast('success', 'Account updated');
+    }, { ok: 'Save', note: 'Changing the balance keeps your PnL history.' });
+  }
+  function acctReset(id) {
+    const a = acct(id);
+    ask(`Reset "${a.name}"`, [{ k: 'bal', label: 'Start again with (USD)', value: a.initial }],
+      async v => { await Engine.resetAccount(id, +v.bal); toast('info', `${a.name} reset`); }, { ok: 'Reset', note: 'Clears all positions, open orders, fills and history.' });
+  }
+  function acctDelete(id) {
+    const a = acct(id);
+    ask(`Delete "${a.name}"?`, [], async () => { const r = await Engine.deleteAccount(id); if (!r.ok) return toast('error', r.error); toast('info', `${a.name} deleted`); },
+      { ok: 'Delete', danger: true, note: 'Its positions, orders and history are removed permanently. This cannot be undone.' });
   }
   function newAccountDialog() {
-    ask('New demo account', [{ k: 'name', label: 'Account name', value: `Account ${Engine.state.accounts.length + 1}`, text: true }, { k: 'bal', label: 'Starting balance (USD)', value: 10000 }],
-      async (v) => { const r = await Engine.createAccount(v.name, +v.bal); if (!r.ok) return toast('error', r.error); toast('success', `Created ${Engine.active.name}`); });
-  }
-  function manageAccounts() {
-    const rows = () => Engine.state.accounts.map(a => { const s = Engine.summary(a); return `<tr><td><b>${esc(a.name)}</b>${a.id === Engine.active.id ? ' <span class="chip">active</span>' : ''}</td><td>${fmt(s.equity)}</td><td class="${cls(s.equity - a.initial)}">${sgn(s.equity - a.initial)}</td>
-      <td style="text-align:right"><button class="btn" data-a="sw" data-id="${a.id}">Switch</button> <button class="btn" data-a="rn" data-id="${a.id}">Rename</button> <button class="btn" data-a="dp" data-id="${a.id}">Add funds</button> <button class="btn" data-a="rs" data-id="${a.id}">Reset</button> <button class="btn dng" data-a="dl" data-id="${a.id}">Delete</button></td></tr>`; }).join('');
-    const draw = () => { modal(`<h3>Demo accounts <button class="x" data-close>×</button></h3><table><thead><tr><th>Name</th><th>Equity (USD)</th><th>PnL</th><th></th></tr></thead><tbody>${rows()}</tbody></table><div class="mrow"><button class="btn pri" data-a="new">+ New demo account</button></div>`); };
-    draw();
-    $('#mbox').onclick = (e) => {
-      if (e.target.closest('[data-close]')) return closeModal();
-      const b = e.target.closest('[data-a]'); if (!b) return;
-      const id = b.dataset.id, a = Engine.state.accounts.find(x => x.id === id), act = b.dataset.a;
-      const redo = () => { manageAccounts(); };
-      if (act === 'new') return newAccountDialog();
-      if (act === 'sw') { Engine.switchAccount(id); draw(); }
-      if (act === 'rn') acctRename(id, redo);
-      if (act === 'dp') acctFund(id, redo);
-      if (act === 'rs') acctReset(id, redo);
-      if (act === 'dl') acctDelete(id, redo);
-    };
+    ask('New account', [{ k: 'name', label: 'Account name', value: `Account ${Engine.state.accounts.length + 1}`, text: true }, { k: 'bal', label: 'Starting balance (USD)', value: 10000 }],
+      async (v) => { const r = await Engine.createAccount(v.name, +v.bal); if (!r.ok) return toast('error', r.error); toast('success', `Created ${Engine.active.name}`); }, { ok: 'Create' });
   }
 
   /* ================= modals / toasts ================= */
@@ -876,14 +881,14 @@
   function closeModal() { $('#modal').classList.add('hidden'); $('#mbox').onclick = null; }
   $('#modal').addEventListener('mousedown', (e) => { if (e.target.id === 'modal') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-  function ask(title, fields, cb) {
-    modal(`<h3>${esc(title)} <button class="x" data-close>×</button></h3>` + fields.map(f => `<div class="fld" style="margin-top:10px"><label>${esc(f.label)}</label><div class="inp"><input data-k="${f.k}" value="${esc(f.value)}" ${f.text ? '' : 'inputmode="decimal"'}></div></div>`).join('') +
-      '<div class="mrow" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn pri" id="askOk">Confirm</button></div>');
+  function ask(title, fields, cb, o = {}) {
+    modal(`<h3>${esc(title)} <button class="x" data-close>×</button></h3>` + (o.note ? `<div class="mnote">${esc(o.note)}</div>` : '') + fields.map(f => `<div class="fld" style="margin-top:10px"><label>${esc(f.label)}</label><div class="inp"><input data-k="${f.k}" value="${esc(f.value)}" ${f.text ? '' : 'inputmode="decimal"'}></div></div>`).join('') +
+      `<div class="mrow" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn ${o.danger ? 'del' : 'pri'}" id="askOk">${esc(o.ok || 'Confirm')}</button></div>`);
     const go = () => { const v = {}; $('#mbox').querySelectorAll('input[data-k]').forEach(i => v[i.dataset.k] = i.value); closeModal(); cb(v); };
     $('#askOk').onclick = go;
     $('#mbox').onclick = (e) => { if (e.target.closest('[data-close]')) closeModal(); };
     $('#mbox').onkeydown = (e) => { if (e.key === 'Enter') go(); };
-    const first = $('#mbox input'); first.focus(); first.select();
+    const first = $('#mbox input'); if (first) { first.focus(); first.select(); } else $('#askOk').focus();
   }
   function openLeverage() {
     const a = Engine.active, p = P(), cur = Engine.levOf(a, ui.sym);

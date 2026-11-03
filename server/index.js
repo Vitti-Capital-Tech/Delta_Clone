@@ -110,6 +110,11 @@ const OPS = {
     return { ok: true, id: a.id };
   },
   async renameAccount(uid, m) { const a = own(uid, m.id); Engine.renameAccount(a.id, String(m.name || '').slice(0, 40)); return { ok: true }; },
+  async setBalance(uid, m) {
+    const a = own(uid, m.id), v = +m.balance;
+    if (!(v >= 0 && v <= 1e9)) return { ok: false, error: 'Enter a balance between 0 and 1,000,000,000' };
+    Engine.setBalance(a.id, v); return { ok: true };
+  },
   async deposit(uid, m) { const a = own(uid, m.id); Engine.deposit(a.id, num(m.amt, 0)); return { ok: true }; },
   async resetAccount(uid, m) {
     const a = own(uid, m.id); await enqueue(() => db.clearAccountData(a.id));

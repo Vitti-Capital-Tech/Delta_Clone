@@ -69,6 +69,7 @@
       if (S.activeId === id) S.activeId = S.accounts[0].id;
       changed('accounts'); return true;
     },
+    setBalance(id, v) { const a = S.accounts.find(x => x.id === id); if (a) { a.initial += v - a.balance; a.balance = v; changed('accounts'); } },
     deposit(id, amt) { const a = S.accounts.find(x => x.id === id); if (a) { a.balance += +amt; a.initial += +amt; changed('accounts'); } },
 
     /* ---------- account maths ---------- */

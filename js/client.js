@@ -64,6 +64,7 @@
     resetAccount: (id, balance) => rpc('resetAccount', { id, balance }),
     deleteAccount: (id) => rpc('deleteAccount', { id }),
     deposit: (id, amt) => rpc('deposit', { id, amt }),
+    setBalance: (id, balance) => rpc('setBalance', { id, balance }),
     switchAccount(id) {
       if (!Engine.state.accounts.some(a => a.id === id)) return;
       Engine.state.activeId = id; try { localStorage.setItem('dx_active', id); } catch (_) {}

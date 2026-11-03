@@ -336,3 +336,32 @@ body.optv .ctr-panel{position:relative;z-index:6}
 .oneclick .s{background:var(--dsell);border-radius:3px 0 0 3px}.oneclick .b{background:#2962ff;border-radius:0 3px 3px 0}
 .oneclick input{width:34px;text-align:center;background:var(--dbg);border:1px solid var(--dln);border-width:1px 0;color:var(--tx);outline:0;font-size:12px}
 #depth{position:absolute;inset:0;width:100%;height:100%}
+/* ---- profile menu: account cards with icon actions ---- */
+.prof .menu{top:46px;width:340px;padding:0;overflow:hidden;background:#1e2026;border-color:#2b2e35;border-radius:10px;box-shadow:0 16px 40px #000c}
+.pm-head{display:flex;align-items:center;gap:12px;padding:16px 16px 12px}
+.pm-who{display:flex;flex-direction:column;min-width:0}.pm-who b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-who small{color:var(--mut);font-size:11.5px;margin-top:2px}
+.pm-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:0 12px 12px;background:#24272e;border:1px solid #2b2e35;border-radius:8px}
+.pm-stats div{display:flex;flex-direction:column;gap:3px;padding:9px 10px}.pm-stats div+div{border-left:1px solid #2b2e35}
+.pm-stats small{color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}.pm-stats b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.pm-sec{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 6px;border-top:1px solid #2b2e35;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.pm-cnt{background:#2a2d34;color:#c9cdd2;border-radius:10px;padding:1px 7px;font-size:10.5px}
+.pm-list{max-height:290px;overflow-y:auto;padding:0 8px 6px;scrollbar-width:thin;scrollbar-color:#3a3e46 transparent}
+.pm-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.pm-row:hover{background:#262930}
+.pm-row.on{background:#f7861c12;border-color:#f7861c55}
+.avatar.sm{width:30px;height:30px;font-size:12.5px;border:0;flex:none}
+.pm-n{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pm-n b{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-n small{color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums}
+.pm-act{display:flex;gap:2px;opacity:.45;transition:opacity .12s}
+.pm-row:hover .pm-act,.pm-row.on .pm-act{opacity:1}
+.pm-act button{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#c9cdd2}
+.pm-act button svg{width:15px;height:15px}
+.pm-act button:hover{background:#33363e;color:#fff}
+.pm-act button.dng:hover{background:#ef5a5a22;color:var(--dsell)}
+.pm-act button:disabled{opacity:.3;cursor:not-allowed;background:none;color:#c9cdd2}
+.pm-new{display:block;width:calc(100% - 24px);margin:6px 12px 12px;padding:9px 0;border:1px dashed #3a3e46;border-radius:8px;color:var(--dacc);font-weight:600}
+.pm-new:hover{background:#f7861c12;border-color:var(--dacc)}
+.mnote{color:var(--mut);font-size:12.5px;margin:-6px 0 6px;line-height:1.5}
+.btn.del{background:var(--dsell);border-color:var(--dsell);color:#fff}
