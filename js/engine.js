@@ -21,16 +21,17 @@
   const mark = (s) => (tk(s) && tk(s).mark) || 0;
   const last = (s) => (tk(s) && tk(s).last) || 0;
   const roundTick = (s, v) => { const p = prod(s); return Math.round(v / p.tick) * p.tick; };
-  const levOf = (a, s) => prod(s).kind !== 'perp' ? 1 : Math.min(a.lev[s] || prod(s).defLev, prod(s).maxLev);
+  /* leverage is kept per market; options fall back to a per-underlying default ("Set 200x as default for BTC options") */
+  const optDefKey = (s) => prod(s).under + ':options';
+  const levOf = (a, s) => Math.min(a.lev[s] || (prod(s).kind !== 'perp' && a.lev[optDefKey(s)]) || prod(s).defLev, prod(s).maxLev);
   const spotOf = (s) => { const t = tk(s); return (t && t.spot) || Feed.spotOf(prod(s).under) || 0; };
-  /* margin locked per contract. Perps: notional/leverage. Long options: premium paid. Short options: ~exchange-style
-     max(15% spot - OTM amount, 10% spot) of the underlying notional. */
+  /* margin per contract. Perps: notional / leverage. Options follow Delta's contract specs: a buyer pays the premium;
+     Initial Margin (Short) = Index Price / leverage + Option Mark Price (0.5% x Index + Mark at BTC's 200x). */
   function marginUnit(s, side, px, lev) {
     const p = prod(s);
     if (p.kind === 'perp') return p.cv * px / lev;
     if (side === 'buy') return p.cv * px;
-    const S0 = spotOf(s) || px, otm = p.kind === 'call' ? Math.max(p.strike - S0, 0) : Math.max(S0 - p.strike, 0);
-    return p.cv * Math.max(0.15 * S0 - otm, 0.10 * S0);
+    return p.cv * ((spotOf(s) || 0) / lev + (mark(s) || px));
   }
   /* fee per contract incl. GST. Options: rate x underlying notional, capped at 12.5% of the premium. */
   function feeUnit(s, px, role) {
@@ -74,8 +75,9 @@
     upnl(pos, s) { return pos.size === 0 ? 0 : ((mark(s) || pos.entry) - pos.entry) * pos.size * prod(s).cv; },
     orderMargin(a, o) {
       if (o.reduceOnly || o.status === 'filled') return 0;
-      const p = prod(o.symbol), rem = o.size - o.filled;
-      const px = o.price || o.stop || last(o.symbol);
+      const p = prod(o.symbol), rem = o.size - o.filled, t = tk(o.symbol) || {};
+      let px = o.price || o.stop || last(o.symbol);
+      if (p.kind !== 'perp') { px = o.price || o.stop || mark(o.symbol); if (o.side === 'sell') px = Math.max(px, t.bid || 0); }
       const pos = a.positions[o.symbol];
       let open = rem;
       if (pos && Math.sign(pos.size) !== (o.side === 'buy' ? 1 : -1)) open = Math.max(0, rem - Math.abs(pos.size));
@@ -87,23 +89,28 @@
       for (const o of a.orders) ordMargin += Engine.orderMargin(a, o);
       return { balance: a.balance, upnl, equity: a.balance + upnl, posMargin, ordMargin, available: a.balance - posMargin - ordMargin };
     },
-    liqPrice(pos, s) {
-      if (!pos || !pos.size || prod(s).kind !== 'perp') return 0;
-      const p = prod(s), q = Math.abs(pos.size) * p.cv;
-      if (pos.size > 0) return Math.max(0, (pos.entry * q - pos.margin) / (q * (1 - p.mmr)));
-      return (pos.entry * q + pos.margin) / (q * (1 + p.mmr));
+    /* Cross margin (Delta "Main Cross"): the whole balance backs every position, so there is one account-level
+       maintenance requirement and no per-position liquidation price. */
+    maintenance(a) {
+      let mm = 0;
+      for (const s in a.positions) {
+        const pos = a.positions[s], p = prod(s), q = Math.abs(pos.size) * p.cv, m = mark(s) || pos.entry;
+        if (p.kind === 'perp') mm += q * m * p.mmr;
+        else if (pos.size < 0) mm += q * (spotOf(s) * p.mmr + m); // Maintenance Margin (Short) = MM% x Index Price + Option Mark Price
+      }
+      return mm;
     },
-    setLeverage(a, s, lev) {
-      if (prod(s).kind !== 'perp') return { ok: false, error: 'Leverage does not apply to options' };
+    setLeverage(a, s, lev, asDefault) {
       const p = prod(s); lev = Math.max(1, Math.min(p.maxLev, Math.round(lev)));
       const pos = a.positions[s];
       if (pos) {
-        const need = Math.abs(pos.size) * p.cv * pos.entry / lev, diff = need - pos.margin;
+        const need = Math.abs(pos.size) * marginUnit(s, pos.size > 0 ? 'buy' : 'sell', pos.entry, lev), diff = need - pos.margin;
         if (diff > Engine.summary(a).available) return { ok: false, error: 'Insufficient margin to apply this leverage' };
-        if (need <= Math.abs(pos.size) * p.cv * pos.entry * p.mmr * 1.2) return { ok: false, error: 'Leverage too high for open position' };
         pos.margin = need; pos.lev = lev;
       }
-      a.lev[s] = lev; changed('positions'); return { ok: true };
+      a.lev[s] = lev;
+      if (asDefault && p.kind !== 'perp') a.lev[optDefKey(s)] = lev;
+      changed('positions'); return { ok: true };
     },
 
     /* ---------- order entry ---------- */
@@ -134,7 +141,7 @@
       const order = {
         id: S.nextOrder++, symbol: o.symbol, side: o.side, type: o.type, size: o.size, filled: 0, avg: 0,
         price: isLimit ? o.price : null, stop: isStop ? o.stop : null, trigger: o.trigger || 'mark',
-        reduceOnly: !!o.reduceOnly, postOnly: !!o.postOnly, tp: o.tp || null, sl: o.sl || null,
+        reduceOnly: !!o.reduceOnly, postOnly: !!o.postOnly, tp: o.tp || null, sl: o.sl || null, tif: o.tif === 'ioc' ? 'ioc' : 'gtc',
         status: isStop ? 'untriggered' : 'open', ts: Date.now(),
       };
       if (isStop) {
@@ -145,6 +152,7 @@
       }
       a.orders.push(order);
       execute(a, order);
+      if (order.tif === 'ioc' && a.orders.includes(order)) Engine.cancel(a, order.id, 'ioc');
       if (order.type === 'market' && order.filled === 0) {
         const i = a.orders.indexOf(order); if (i >= 0) a.orders.splice(i, 1);
         return { ok: false, error: 'No liquidity available for a market order' };
@@ -297,24 +305,31 @@
           }
         }
       }
+      if (a.positions[sym] && kind !== 'book' && liquidateIfShort(a)) { dirty = true; continue; }
       const pos = a.positions[sym];
       if (pos && kind !== 'book') {
-        const m = mark(sym), p = prod(sym);
-        const equity = pos.margin + Engine.upnl(pos, sym);
-        const thr = p.kind === 'perp' ? Math.abs(pos.size) * p.cv * m * p.mmr : pos.size < 0 ? pos.margin * 0.5 : -1e18; // long options can't be liquidated
-        if (m && equity <= thr) { liquidate(a, sym); dirty = true; }
-        else if (pos.sl && (pos.size > 0 ? m <= pos.sl : m >= pos.sl)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'info', msg: `Stop loss triggered on ${sym}` })); dirty = true; }
+        const m = mark(sym);
+        if (pos.sl && (pos.size > 0 ? m <= pos.sl : m >= pos.sl)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'info', msg: `Stop loss triggered on ${sym}` })); dirty = true; }
         else if (pos.tp && (pos.size > 0 ? m >= pos.tp : m <= pos.tp)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'success', msg: `Take profit hit on ${sym}` })); dirty = true; }
       }
     }
     if (dirty) changed('market');
   }
 
+  /* account goes into liquidation when equity (balance + unrealised PnL) can't cover the maintenance margin of all
+     positions; the worst-losing positions are closed first until it can */
+  function liquidateIfShort(a) {
+    if (Engine.summary(a).equity > Engine.maintenance(a)) return false;
+    const worst = Object.keys(a.positions).sort((x, y) => Engine.upnl(a.positions[x], x) - Engine.upnl(a.positions[y], y));
+    for (const s of worst) { liquidate(a, s); if (Engine.summary(a).equity > Engine.maintenance(a)) break; }
+    return true;
+  }
+
   function liquidate(a, sym) {
     const pos = a.positions[sym], p = prod(sym), m = mark(sym);
     const realized = (m - pos.entry) * pos.size * p.cv;
     const left = Math.max(0, pos.margin + realized);
-    const penalty = Math.min(left, p.kind === 'perp' ? Math.abs(pos.size) * p.cv * m * p.mmr * p.liqPenalty : left * 0.1);
+    const penalty = Math.min(left, Math.abs(pos.size) * p.cv * m * p.mmr * p.liqPenalty);
     a.balance += realized - penalty; a.realized += realized; a.fees += penalty;
     const rec = { id: uid(), orderId: 0, symbol: sym, side: pos.size > 0 ? 'sell' : 'buy', size: Math.abs(pos.size), price: m, role: 'liquidation', fee: penalty, realized: realized - penalty, ts: Date.now() };
     a.fills.unshift(rec);

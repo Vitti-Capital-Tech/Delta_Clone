@@ -35,10 +35,12 @@
 
 <main class="grid">
   <section class="panel chart-panel">
-    <div class="ptools" id="chartTools"><div id="resBar" class="resbar"></div><div class="sp"></div><div id="chartOpts" class="resbar"></div></div>
-    <div id="chartWrap" class="chartwrap"><div id="legend" class="legend"></div><div id="chart"></div></div>
+    <div class="ptools" id="chartTools"></div>
+    <div id="chartWrap" class="chartwrap"><div id="legend" class="legend"></div><div id="oneClick" class="oneclick hidden"></div><div id="chart"></div><canvas id="depth" class="hidden"></canvas></div>
     <div id="chain" class="chain hidden"></div>
   </section>
+
+  <section class="panel ctr-panel" id="ctrHdr"></section>
 
   <section class="panel book-panel">
     <div class="tabs" id="bookTabs"><a data-t="book" class="on">Order Book</a><a data-t="trades">Recent Trades</a></div>

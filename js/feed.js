@@ -27,7 +27,9 @@
       under: p.underlying_asset ? p.underlying_asset.symbol : p.contract_unit_currency, base: p.underlying_asset ? p.underlying_asset.symbol : p.contract_unit_currency,
       unit: p.contract_unit_currency, desc: p.description || p.symbol,
       cv: +p.contract_value, tick: +p.tick_size, dp: decimals(p.tick_size),
-      maxLev: kind === 'perp' ? Math.max(1, Math.floor(100 / imr)) : 1, defLev: kind === 'perp' ? (Math.round(+p.default_leverage) || 10) : 1,
+      maxLev: Math.max(1, Math.floor(100 / imr)), defLev: Math.round(+p.default_leverage) || 10,
+      maxLevNotional: +p.max_leverage_notional || 0, imScale: +p.initial_margin_scaling_factor || 0,
+      index: p.spot_index ? p.spot_index.symbol : '', maxOi: (p.product_specs && +p.product_specs.max_oi_usd) || 0,
       imr: imr / 100, mmr: +p.maintenance_margin / 100,
       taker: +p.taker_commission_rate, maker: +p.maker_commission_rate,
       posLimit: p.position_size_limit || 1e9, liqPenalty: +p.liquidation_penalty_factor || 0.5,
@@ -42,7 +44,7 @@
     return {
       symbol: t.symbol, mark: +t.mark_price || close || prev.mark || 0, last: close || prev.last || 0, bid: +q.best_bid || 0,
       ask: +q.best_ask || 0, bidSize: num(q.bid_size), askSize: num(q.ask_size), open: +t.open, high: +t.high, low: +t.low,
-      volUsd: +t.turnover_usd || 0, oiUsd: +t.oi_value_usd || 0, oi: num(t.oi_contracts), volume: num(t.size), funding: (+t.funding_rate || 0) / 100,
+      volUsd: +t.turnover_usd || 0, oiUsd: +t.oi_value_usd || 0, oiChg6h: num(t.oi_change_usd_6h), oi: num(t.oi_contracts), volume: num(t.size), funding: (+t.funding_rate || 0) / 100,
       spot: +t.spot_price || prev.spot || 0, band: t.price_band || null,
       iv: num(q.mark_iv), bidIv: num(q.bid_iv), askIv: num(q.ask_iv),
       greeks: g ? { delta: num(g.delta), gamma: num(g.gamma), theta: num(g.theta), vega: num(g.vega) } : null, ts: Date.now(),
@@ -167,11 +169,24 @@
 
   /* ---- candles ---- */
   const RES = { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '1d': 86400, '1w': 604800 };
-  Feed.RES = RES;
+  Feed.RES = { ...RES, '10m': 600, '2w': 1209600 };
+  /* Delta's chart also offers 10m and 2W, which the API doesn't serve: build them from 5m / 1w bars.
+     symbol can be a contract, MARK:<contract> (mark price) or an index such as .DEXBTUSD. */
+  const MERGED = { '10m': ['5m', 600, 0], '2w': ['1w', 1209600, 345600] }; // 2W buckets start on a Monday, like 1W
   Feed.candles = async function (symbol, res, endSec) {
+    const m = MERGED[res];
+    if (m) {
+      const out = [];
+      for (const c of await Feed.candles(symbol, m[0], endSec)) {
+        const t = Math.floor((c.time - m[2]) / m[1]) * m[1] + m[2], b = out[out.length - 1];
+        if (b && b.time === t) { b.high = Math.max(b.high, c.high); b.low = Math.min(b.low, c.low); b.close = c.close; b.volume += c.volume; }
+        else out.push({ ...c, time: t });
+      }
+      return out;
+    }
     const end = endSec || Math.floor(Date.now() / 1000), start = end - RES[res] * 500;
     const r = await fetch(`${REST}/v2/history/candles?symbol=${symbol}&resolution=${res}&start=${start}&end=${end}`).then(r => r.json());
-    return (r.result || []).map(c => ({ time: c.time, open: +c.open, high: +c.high, low: +c.low, close: +c.close, volume: +c.volume })).sort((a, b) => a.time - b.time);
+    return (r.result || []).map(c => ({ time: c.time, open: +c.open, high: +c.high, low: +c.low, close: +c.close, volume: +c.volume || 0 })).sort((a, b) => a.time - b.time);
   };
 
   Feed.init = init;

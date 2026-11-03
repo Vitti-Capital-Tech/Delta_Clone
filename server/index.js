@@ -97,7 +97,7 @@ function cleanOrder(o) {
   if (!['buy', 'sell'].includes(o.side)) throw new Error('Invalid side');
   if (!TYPES.includes(o.type)) throw new Error('Invalid order type');
   return { symbol: o.symbol, side: o.side, type: o.type, size: +o.size, price: +o.price || 0, stop: +o.stop || 0, trigger: o.trigger === 'last' ? 'last' : 'mark',
-    reduceOnly: !!o.reduceOnly, postOnly: !!o.postOnly, tp: +o.tp || null, sl: +o.sl || null };
+    reduceOnly: !!o.reduceOnly, postOnly: !!o.postOnly, tp: +o.tp || null, sl: +o.sl || null, tif: o.tif === 'ioc' ? 'ioc' : 'gtc' };
 }
 function own(uid, id) { const a = Engine.state.accounts.find(x => x.id === id && x.userId === uid); if (!a) throw new Error('Account not found'); return a; }
 const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? Math.min(+v, 1e9) : d);
@@ -121,7 +121,7 @@ const OPS = {
     Engine.state.accounts = Engine.state.accounts.filter(x => x.id !== a.id); lastSaved.delete(a.id);
     enqueue(() => db.deleteAccount(a.id)); Engine.emit('accounts'); return { ok: true };
   },
-  async setLeverage(uid, m) { const a = own(uid, m.acct); await ensureBook(String(m.symbol)); return Engine.setLeverage(a, String(m.symbol), +m.lev); },
+  async setLeverage(uid, m) { const a = own(uid, m.acct); await ensureBook(String(m.symbol)); return Engine.setLeverage(a, String(m.symbol), +m.lev, !!m.asDefault); },
   async place(uid, m) {
     const a = own(uid, m.acct), o = cleanOrder(m.order);
     await ensureBook(o.symbol);

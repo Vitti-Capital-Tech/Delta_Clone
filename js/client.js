@@ -58,7 +58,7 @@
     closePosition: (a, symbol, type, price) => rpc('closePosition', { acct: a.id, symbol, type, price }),
     closeAll: (a) => rpc('closeAll', { acct: a.id }),
     setTpSl: (a, symbol, tp, sl) => rpc('setTpSl', { acct: a.id, symbol, tp, sl }),
-    setLeverage: (a, symbol, lev) => rpc('setLeverage', { acct: a.id, symbol, lev }),
+    setLeverage: (a, symbol, lev, asDefault) => rpc('setLeverage', { acct: a.id, symbol, lev, asDefault }),
     async createAccount(name, balance) { const r = await rpc('createAccount', { name, balance }); if (r.ok) Engine.switchAccount(r.id); return r; },
     renameAccount: (id, name) => rpc('renameAccount', { id, name }),
     resetAccount: (id, balance) => rpc('resetAccount', { id, balance }),
