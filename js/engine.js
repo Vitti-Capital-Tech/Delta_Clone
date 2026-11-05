@@ -173,11 +173,15 @@
       return Engine.place(a, { symbol: s, side: pos.size > 0 ? 'sell' : 'buy', type: type || 'market', size: Math.abs(pos.size), price, reduceOnly: true });
     },
     closeAll(a) { Object.keys(a.positions).forEach(s => Engine.closePosition(a, s, 'market')); },
+    /* TP/SL trigger: futures on the mark price; options on the underlying index price, as Delta shows them.
+       gainsUp: the position profits when that price rises (long future, long call, short put). */
+    tpslRef(s) { return prod(s).kind === 'perp' ? mark(s) : spotOf(s); },
+    gainsUp(size, s) { const k = prod(s).kind; return k === 'put' ? size < 0 : size > 0; },
     setTpSl(a, s, tp, sl) {
       const pos = a.positions[s]; if (!pos) return { ok: false, error: 'No position' };
-      const m = mark(s);
-      if (tp && (pos.size > 0 ? tp <= m : tp >= m)) return { ok: false, error: 'Take profit on wrong side of mark price' };
-      if (sl && (pos.size > 0 ? sl >= m : sl <= m)) return { ok: false, error: 'Stop loss on wrong side of mark price' };
+      const m = Engine.tpslRef(s), up = Engine.gainsUp(pos.size, s), what = prod(s).kind === 'perp' ? 'mark price' : 'index price';
+      if (tp && (up ? tp <= m : tp >= m)) return { ok: false, error: `Take profit must be ${up ? 'above' : 'below'} the ${what} (${+m.toFixed(2)})` };
+      if (sl && (up ? sl >= m : sl <= m)) return { ok: false, error: `Stop loss must be ${up ? 'below' : 'above'} the ${what} (${+m.toFixed(2)})` };
       pos.tp = tp || null; pos.sl = sl || null; changed('positions'); return { ok: true };
     },
   };
@@ -309,9 +313,9 @@
       if (a.positions[sym] && kind !== 'book' && liquidateIfShort(a)) { dirty = true; continue; }
       const pos = a.positions[sym];
       if (pos && kind !== 'book') {
-        const m = mark(sym);
-        if (pos.sl && (pos.size > 0 ? m <= pos.sl : m >= pos.sl)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'info', msg: `Stop loss triggered on ${sym}` })); dirty = true; }
-        else if (pos.tp && (pos.size > 0 ? m >= pos.tp : m <= pos.tp)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'success', msg: `Take profit hit on ${sym}` })); dirty = true; }
+        const m = Engine.tpslRef(sym), up = Engine.gainsUp(pos.size, sym);
+        if (pos.sl && m && (up ? m <= pos.sl : m >= pos.sl)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'info', msg: `Stop loss triggered on ${sym}` })); dirty = true; }
+        else if (pos.tp && m && (up ? m >= pos.tp : m <= pos.tp)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'success', msg: `Take profit hit on ${sym}` })); dirty = true; }
       }
     }
     if (dirty) changed('market');

@@ -18,7 +18,7 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem('dx_ui2')) || {}; } catch (_) { return {}; } })();
   const ui = {
     view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
-    sym: null, otype: 'limit', side: 'buy', botTab: 'positions',
+    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(),
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
     lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, mtab: 'markets', mk: 'options', cview: 'price', moreOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
   };
@@ -631,7 +631,7 @@
       ${isStop ? '' : `<div class="dpct">${[10, 25, 50, 75, 100].map(x => `<a data-pc="${x}">${x}%</a>`).join('')}</div>`}
       <div class="dkv mut sm"><span id="qtyBase">~0.000 ${esc(p.unit || p.base)}</span><span>1 Lot = ${p.cv} ${esc(p.unit || p.base)}</span></div>
       ${isStop ? '' : `<div class="dkv"><span class="dl">Bracket Order</span><button class="dadd" id="tpAdd">${f.tpOn ? '− Remove TP/SL' : '+ Add TP/SL'}</button></div>
-        ${f.tpOn ? `<div class="dinp"><input id="fTp" inputmode="decimal" placeholder="Take Profit Trigger Price USD" value="${f.tp}"></div><div class="dinp"><input id="fSl" inputmode="decimal" placeholder="Stop Loss Trigger Price USD" value="${f.sl}"></div>` : ''}
+        ${f.tpOn ? `<div class="dinp"><input id="fTp" inputmode="decimal" placeholder="${p.kind === 'perp' ? 'Take Profit Trigger Price USD' : `TP · ${esc(p.under)} index price USD`}" value="${f.tp}"></div><div class="dinp"><input id="fSl" inputmode="decimal" placeholder="${p.kind === 'perp' ? 'Stop Loss Trigger Price USD' : `SL · ${esc(p.under)} index price USD`}" value="${f.sl}"></div>` : ''}
         <div class="dkv"><span class="dl">Funds req. <span class="rf">⟳</span></span><b id="kCost">~0.00 USD</b></div>`}
       <div class="dkv"><span>Available Margin</span><b id="kAvail">--</b></div>
       <button class="dsubmit ${sd === 'buy' ? 'b' : 's'}" data-side="${sd}">${sd === 'buy' ? 'Buy' : 'Sell'}</button>
@@ -703,9 +703,9 @@
       }
     }
     if (f.tpOn && (p.kind === 'perp' || ui.otype !== 'stop_limit' && ui.otype !== 'tp_limit')) {
-      const ref = refPrice(side), tp = +f.tp || null, sl = +f.sl || null;
-      if (tp && (side === 'buy' ? tp <= ref : tp >= ref)) return toast('error', 'Take profit is on the wrong side of the entry price');
-      if (sl && (side === 'buy' ? sl >= ref : sl <= ref)) return toast('error', 'Stop loss is on the wrong side of the entry price');
+      const opt = p.kind !== 'perp', ref = opt ? Engine.spotOf(ui.sym) : refPrice(side), up = Engine.gainsUp(side === 'buy' ? 1 : -1, ui.sym), tp = +f.tp || null, sl = +f.sl || null, what = opt ? 'index price' : 'entry price';
+      if (tp && (up ? tp <= ref : tp >= ref)) return toast('error', `Take profit must be ${up ? 'above' : 'below'} the ${what}`);
+      if (sl && (up ? sl >= ref : sl <= ref)) return toast('error', `Stop loss must be ${up ? 'below' : 'above'} the ${what}`);
       o.tp = tp; o.sl = sl;
     }
     const r = await Engine.place(a, o);
@@ -718,15 +718,91 @@
   function renderBotTabs() {
     const a = Engine.active;
     const cnt = { positions: Object.keys(a.positions).length, orders: a.orders.filter(o => o.status === 'open').length, stops: a.orders.filter(o => o.status === 'untriggered').length };
-    $('#botTabs').innerHTML = botTabs.map(([k, l]) => `<a data-k="${k}" class="${k === ui.botTab ? 'on' : ''}">${l}${cnt[k] ? ` (${cnt[k]})` : ''}</a>`).join('') +
-      '<span class="grow"></span>' + (ui.botTab === 'positions' ? '<a class="act" data-k="closeall">Close all</a>' : ui.botTab === 'orders' || ui.botTab === 'stops' ? '<a class="act" data-k="cancelall">Cancel all</a>' : '');
+    if (!$('#btL')) $('#botTabs').innerHTML = '<span id="btL" class="btl"></span><span class="grow"></span><span id="btR" class="btr"></span>';
+    const sm = Engine.summary(a), mmr = sm.equity > 0 ? Engine.maintenance(a) / sm.equity : 1;
+    const health = mmr < 0.5 ? ['ok', 'Healthy'] : mmr < 1 ? ['warn', 'At Risk'] : ['bad', 'Liquidation'];
+    const html = botTabs.map(([k, l]) => `<a data-k="${k}" class="${k === ui.botTab ? 'on' : ''}">${l}${cnt[k] ? ` (${cnt[k]})` : ''}${k === 'account' ? ` <i class="hbadge ${health[0]}">${health[1]}</i>` : ''}</a>`).join('');
+    if ($('#btL').dataset.h !== html) { $('#btL').dataset.h = html; $('#btL').innerHTML = html; }
+    if ($('#btR').dataset.k !== ui.botTab) {
+      $('#btR').dataset.k = ui.botTab;
+      $('#btR').innerHTML = ui.botTab === 'positions' ? `<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div><button class="bt-pay" data-k="payoff">${IC_PAY}Payoff</button><button class="bt-close" data-k="closeall">Close All Positions</button>`
+        : ui.botTab === 'orders' || ui.botTab === 'stops' ? '<button class="bt-close" data-k="cancelall">Cancel All</button>' : '';
+      const q = $('#posQ'); if (q) { q.value = ui.posQ; q.oninput = () => { ui.posQ = q.value; dirty(true); }; }
+    }
   }
+  const IC_PAY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 12.5h13M2.5 11l4-4 2.5 2 5-5.5"/></svg>';
   $('#botTabs').onclick = (e) => {
-    const k = e.target.dataset.k; if (!k) return;
-    if (k === 'closeall') return Engine.closeAll(Engine.active);
+    const k = e.target.closest('[data-k]') && e.target.closest('[data-k]').dataset.k; if (!k) return;
+    if (k === 'closeall') return closeAllDialog();
     if (k === 'cancelall') return Engine.cancelAll(Engine.active);
+    if (k === 'payoff') return payoffDialog();
     ui.botTab = k; dirty(true);
   };
+  /* positions the toolbar filters / search / checkboxes leave in view, sorted by time placed */
+  function shownPositions() {
+    const a = Engine.active, q = ui.posQ.trim().toLowerCase();
+    return Object.entries(a.positions).filter(([sym]) => {
+      const p = Feed.products[sym]; if (!p) return false;
+      if (ui.posFilter === 'current' && sym !== ui.sym) return false;
+      if (ui.posFilter === 'options' && p.kind === 'perp') return false;
+      if (ui.posFilter === 'futures' && p.kind !== 'perp') return false;
+      return !q || sym.toLowerCase().includes(q);
+    }).sort((x, y) => (ui.posAsc ? 1 : -1) * ((x[1].opened || 0) - (y[1].opened || 0)));
+  }
+  function closeAllDialog() {
+    const list = shownPositions().filter(([sym]) => !ui.posOff.has(sym));
+    if (!list.length) return toast('info', 'No positions selected');
+    ask(`Close ${list.length} position${list.length > 1 ? 's' : ''}?`, [], async () => {
+      for (const [sym] of list) { const r = await Engine.closePosition(Engine.active, sym, 'market'); if (!r.ok) toast('error', `${sym}: ${r.error}`); }
+    }, { ok: 'Close at Market', danger: true, note: list.map(([sym]) => sym).join(', ') });
+  }
+  function closeDialog(sym) {
+    const pos = Engine.active.positions[sym], p = Feed.products[sym], t = Feed.tickers[sym] || {}; if (!pos) return;
+    const q = Math.abs(pos.size) * p.cv, px = pos.size > 0 ? t.bid : t.ask;
+    modal(`<h3>Close ${esc(sym)} <button class="x" data-close>×</button></h3>
+      <div class="mnote">${pos.size > 0 ? 'Long' : 'Short'} ${q.toFixed(decOf(p.cv))} ${esc(p.unit || p.base)} · entry ${pos.entry.toFixed(p.dp)} · mark ${(t.mark || 0).toFixed(p.dp)}</div>
+      <div class="fld" style="margin-top:10px"><label>Limit price (USD)</label><div class="inp"><input id="clPx" inputmode="decimal" value="${px ? px.toFixed(p.dp) : ''}"></div></div>
+      <div class="mrow" style="justify-content:flex-end"><button class="btn" id="clLim">Close at Limit</button><button class="btn del" id="clMkt">Close at Market</button></div>`);
+    $('#mbox').onclick = (e) => { if (e.target.closest('[data-close]')) closeModal(); };
+    $('#clMkt').onclick = async () => { closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'market'); if (!r.ok) toast('error', r.error); };
+    $('#clLim').onclick = async () => { const v = +$('#clPx').value; closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'limit', v); if (!r.ok) toast('error', r.error); };
+  }
+  function tpslDialog(sym) {
+    const pos = Engine.active.positions[sym], p = Feed.products[sym]; if (!pos) return;
+    const ref = Engine.tpslRef(sym), up = Engine.gainsUp(pos.size, sym), what = p.kind === 'perp' ? 'mark price' : `${p.under} index price`;
+    ask(`${sym} · TP / SL`, [{ k: 'tp', label: `Take profit (${up ? 'above' : 'below'} ${+ref.toFixed(2)}) – blank for none`, value: pos.tp || '' }, { k: 'sl', label: `Stop loss (${up ? 'below' : 'above'} ${+ref.toFixed(2)}) – blank for none`, value: pos.sl || '' }],
+      async (v) => { const r = await Engine.setTpSl(Engine.active, sym, +v.tp || null, +v.sl || null); if (!r.ok) return toast('error', r.error); toast('success', `TP / SL set on ${sym}`); },
+      { ok: 'Save', note: `Triggers on the ${what} and closes the whole position at market.` });
+  }
+  /* Payoff: P&L at expiry of the selected positions in one underlying, against that underlying's price */
+  function payoffDialog() {
+    const list = shownPositions().filter(([sym]) => !ui.posOff.has(sym));
+    if (!list.length) return toast('info', 'No positions selected');
+    const unders = [...new Set(list.map(([sym]) => Feed.products[sym].under))];
+    const draw = (u) => {
+      modal(`<h3>Payoff at expiry <button class="x" data-close>×</button></h3>${unders.length > 1 ? `<div class="seg" style="margin-bottom:10px">${unders.map(x => `<button data-pu="${x}" class="${x === u ? 'on' : ''}">${x}</button>`).join('')}</div>` : ''}
+        <canvas id="payCv" width="600" height="300" style="width:100%;height:300px;display:block"></canvas><div class="mnote" id="payInfo" style="margin-top:8px"></div>`);
+      $('#mbox').onclick = (e) => { if (e.target.closest('[data-close]')) closeModal(); const b = e.target.closest('[data-pu]'); if (b) draw(b.dataset.pu); };
+      const legs = list.filter(([sym]) => Feed.products[sym].under === u).map(([sym, pos]) => ({ p: Feed.products[sym], q: pos.size * Feed.products[sym].cv, entry: pos.entry }));
+      const spot = Feed.spotOf(u) || 1, ks = legs.filter(l => l.p.strike).map(l => l.p.strike);
+      const lo = Math.min(spot * 0.9, ...ks.map(k => k * 0.97)), hi = Math.max(spot * 1.1, ...ks.map(k => k * 1.03));
+      const pnl = (S) => legs.reduce((acc, l) => acc + l.q * ((l.p.kind === 'call' ? Math.max(S - l.p.strike, 0) : l.p.kind === 'put' ? Math.max(l.p.strike - S, 0) : S) - l.entry), 0);
+      const N = 240, pts = Array.from({ length: N + 1 }, (_, i) => { const S = lo + (hi - lo) * i / N; return [S, pnl(S)]; });
+      const ys = pts.map(x => x[1]), yMax = Math.max(...ys, 0), yMin = Math.min(...ys, 0), pad = (yMax - yMin) * 0.1 || 1;
+      const cv = $('#payCv'), r = window.devicePixelRatio || 1, W = cv.clientWidth, H = 300; cv.width = W * r; cv.height = H * r;
+      const g = cv.getContext('2d'); g.scale(r, r);
+      const X = (S) => 50 + (S - lo) / (hi - lo) * (W - 60), Y = (v) => 10 + (yMax + pad - v) / (yMax - yMin + 2 * pad) * (H - 40);
+      g.strokeStyle = '#2b2e35'; g.beginPath(); g.moveTo(50, Y(0)); g.lineTo(W - 10, Y(0)); g.stroke();
+      for (const [S, v] of pts) { g.fillStyle = v >= 0 ? '#24b47e33' : '#ef5a5a33'; g.fillRect(X(S), Math.min(Y(v), Y(0)), (W - 60) / N + 1, Math.abs(Y(v) - Y(0))); }
+      g.beginPath(); pts.forEach(([S, v], i) => i ? g.lineTo(X(S), Y(v)) : g.moveTo(X(S), Y(v))); g.strokeStyle = '#f7861c'; g.lineWidth = 2; g.stroke();
+      g.setLineDash([4, 4]); g.strokeStyle = '#9aa0a8'; g.beginPath(); g.moveTo(X(spot), 10); g.lineTo(X(spot), H - 30); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#9aa0a8'; g.font = '11px Inter, Segoe UI, sans-serif';
+      for (let i = 0; i <= 4; i++) { const S = lo + (hi - lo) * i / 4; g.fillText(Math.round(S), Math.min(X(S) - 14, W - 50), H - 12); }
+      g.fillText(`${sgn(yMax, 0)}`, 4, Y(yMax) + 4); g.fillText(`${sgn(yMin, 0)}`, 4, Y(yMin) + 4); g.fillText('0', 4, Y(0) + 4);
+      $('#payInfo').innerHTML = `${u} index ${num1(spot, 1)} · P&L at expiry if it stays here: <b class="${cls(pnl(spot))}">${sgn(pnl(spot))} USD</b> · in this range max <b class="buy">${sgn(yMax)}</b> / min <b class="sell">${sgn(yMin)}</b> USD · ${legs.length} leg${legs.length > 1 ? 's' : ''}`;
+    };
+    draw(unders.includes(P() && P().under) ? P().under : unders[0]);
+  }
   const time = (ts) => new Date(ts).toLocaleString([], { hour12: false, month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dp = (s) => Feed.products[s] ? Feed.products[s].dp : 2;
   const typeName = (o) => o.type.replace('_', ' ');
@@ -736,14 +812,27 @@
     // column headings stay visible even when empty, so the panel below the fold reads as a table
     const tbl = (head, rows, msg) => `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` + (rows.length ? '' : `<div class="empty">${msg}</div>`);
     if (k === 'positions') {
-      return tbl(['Symbol', 'Size', 'Entry Price', 'Mark Price', 'Margin', 'Unrealised PnL', 'TP / SL', 'Close Position'], Object.entries(a.positions).map(([s, pos]) => {
-        const p = Feed.products[s], o = p.kind !== 'perp', u = Engine.upnl(pos, s), d = p.dp, roe = pos.margin ? u / pos.margin * 100 : 0, mk = (Feed.tickers[s] || {}).mark || pos.entry;
-        return `<tr><td><a data-sym="${s}" style="cursor:pointer"><b>${s}</b></a> ${o && pos.lev <= 1 ? '' : `<span class="chip">${pos.lev}x</span>`}${o ? `<small class="mut" style="display:block">expires ${dayLbl(p.expiry)} ${hhmm(p.expiry)} (${left(p.expiry)})</small>` : ''}</td>
-          <td class="${pos.size > 0 ? 'buy' : 'sell'}">${fmt(pos.size, 0)} <span class="mut">(${fmt(Math.abs(pos.size) * p.cv, 4)} ${p.unit || p.base})</span></td>
-          <td>${fmt(pos.entry, d)}</td><td>${fmt(mk, d)}</td><td>${fmt(pos.margin)}</td>
-          <td class="${cls(u)}">${sgn(u)} (${sgn(roe)}%)</td>
-          <td>${o ? '--' : `<a data-act="tpsl" data-s="${s}" style="cursor:pointer">${pos.tp ? fmt(pos.tp, d) : '--'} / ${pos.sl ? fmt(pos.sl, d) : '--'} ✎</a>`}</td>
-          <td><button class="btn" data-act="cm" data-s="${s}">Market</button> <button class="btn" data-act="cl" data-s="${s}">Limit</button></td></tr>`;
+      const list = shownPositions(), all = list.length && list.every(([sym]) => !ui.posOff.has(sym));
+      const tot = list.reduce((acc, [sym, pos]) => acc + Engine.upnl(pos, sym), 0);
+      const bar = `<div class="pbar"><div class="pchips">${[['all', 'All'], ['current', 'Current Contract'], ['options', 'Options'], ['futures', 'Futures']].map(([f, l]) => `<a data-pf="${f}" class="${f === ui.posFilter ? 'on' : ''}">${l}</a>`).join('')}</div>
+        <span class="grow"></span><span class="pusd">USD ($)</span><span class="ptot">Σ Total UPNL <b class="${cls(tot)}">${tot >= 0 ? '+' : '-'}$${fmt(Math.abs(tot))}</b></span>
+        <a class="psort" data-act="psort">Time Placed ${ui.posAsc ? '↑' : '↓'}</a></div>`;
+      const head = [`<input type="checkbox" class="pck" data-act="pckall" ${all ? 'checked' : ''}>`, 'Symbol', 'Size', 'Notional', 'Entry Price', '<span class="dl">TP / SL</span>', 'Index Price', 'Mark Price', '<span class="dl">Est. Liq. Price</span>', '<span class="dl">Margin</span>', '<span class="dl">UPNL</span>', 'Share', 'Cashflows', 'Action'];
+      return bar + tbl(head, list.map(([s, pos]) => {
+        const p = Feed.products[s], o = p.kind !== 'perp', t = Feed.tickers[s] || {}, u = Engine.upnl(pos, s), d = p.dp, cd = decOf(p.cv), q = Math.abs(pos.size) * p.cv;
+        const mk = t.mark || pos.entry, idx = Engine.spotOf(s), notional = q * (o ? idx : mk), pct = pos.entry ? u / (q * pos.entry) * 100 : 0, cash = -pos.size * p.cv * pos.entry, long = pos.size > 0;
+        const tpsl = (l, v) => v ? `<span>${l} (USD): <b>${num1(v, 2)}</b></span>` : `<span>${l} : -</span>`;
+        return `<tr><td><input type="checkbox" class="pck" data-act="pck" data-s="${s}" ${ui.posOff.has(s) ? '' : 'checked'}></td>
+          <td class="psym ${long ? 'l' : 's'}"><a data-sym="${s}">${s}</a></td>
+          <td class="${long ? 'buy' : 'sell'}">${long ? '+' : '-'}${q.toFixed(cd)} ${esc(p.unit || p.base)}</td>
+          <td>${fmt(notional)} <span class="mut">USD</span></td><td>${pos.entry.toFixed(d)}</td>
+          <td><div class="ptpsl"><div>${tpsl('TP', pos.tp)}${tpsl('SL', pos.sl)}</div><button class="ib" data-act="tpsl" data-s="${s}" title="Edit TP / SL">${IC.edit}</button><button class="ib" data-act="tpclr" data-s="${s}" title="Remove TP / SL" ${pos.tp || pos.sl ? '' : 'disabled'}>${IC.del}</button></div></td>
+          <td>${num1(idx, 1)}</td><td>${mk.toFixed(d)}${o && t.iv ? `<small class="mut" style="display:block">${(t.iv * 100).toFixed(1)}%</small>` : ''}</td>
+          <td><span class="dl">N.A.</span></td><td>${o && long ? '-' : `${fmt(pos.margin)} <span class="mut">USD</span>`}</td>
+          <td class="${cls(u)}">${fmt(u)} USD<small style="display:block">${pct.toFixed(2)}%</small></td>
+          <td><button class="ib" data-act="share" data-s="${s}" title="Copy position">${IC_SHARE}</button></td>
+          <td>${o ? `${num1(cash, 2)} <span class="mut">USD</span>` : '-'}</td>
+          <td><button class="pclose" data-act="close" data-s="${s}" title="Close position">✕</button></td></tr>`;
       }), 'No open positions');
     }
     if (k === 'orders' || k === 'stops') {
@@ -761,14 +850,27 @@
       ['Position margin', fmt(s.posMargin) + ' USD'], ['Order margin', fmt(s.ordMargin) + ' USD'], ['Available balance', fmt(s.available) + ' USD'], ['Realised PnL', `<span class="${cls(a.realized)}">${sgn(a.realized)} USD</span>`],
       ['Fees paid', fmt(a.fees) + ' USD'], ['Funding paid', `<span class="${cls(-a.funding)}">${fmt(a.funding)} USD</span>`], ['Total PnL since start', `<span class="${cls(pnl)}">${sgn(pnl)} USD</span>`]].map(([l, v]) => `<tr><td class="mut" style="width:220px">${l}</td><td>${v}</td></tr>`).join('')}</tbody></table>`;
   }
+  const IC_SHARE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="2"/><circle cx="12" cy="3.5" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M5.8 7l4.4-2.5M5.8 9l4.4 2.5"/></svg>';
   $('#botView').onclick = async (e) => {
+    const pf = e.target.closest('[data-pf]'); if (pf) { ui.posFilter = pf.dataset.pf; return dirty(true); }
     const sym = e.target.closest('[data-sym]'); if (sym) return selectSymbol(sym.dataset.sym);
-    const b = e.target.closest('[data-act]'); if (!b) return;
+    const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     const a = Engine.active, s = b.dataset.s;
+    if (b.dataset.act === 'psort') { ui.posAsc = !ui.posAsc; return dirty(true); }
+    if (b.dataset.act === 'pck') { if (b.checked) ui.posOff.delete(s); else ui.posOff.add(s); return dirty(true); }
+    if (b.dataset.act === 'pckall') { shownPositions().forEach(([x]) => b.checked ? ui.posOff.delete(x) : ui.posOff.add(x)); return dirty(true); }
+    if (b.dataset.act === 'close') return closeDialog(s);
+    if (b.dataset.act === 'tpclr') { const r = await Engine.setTpSl(a, s, null, null); return r.ok ? toast('info', `TP / SL removed on ${s}`) : toast('error', r.error); }
+    if (b.dataset.act === 'share') {
+      const pos = a.positions[s], p = Feed.products[s], u = Engine.upnl(pos, s);
+      const txt = `${s} ${pos.size > 0 ? 'LONG' : 'SHORT'} ${(Math.abs(pos.size) * p.cv).toFixed(decOf(p.cv))} ${p.unit || p.base} @ ${pos.entry.toFixed(p.dp)} | UPNL ${sgn(u)} USD (Delta Demo)`;
+      try { await navigator.clipboard.writeText(txt); toast('success', 'Position copied to clipboard'); } catch (_) { toast('info', txt); }
+      return;
+    }
     if (b.dataset.act === 'cx') Engine.cancel(a, +b.dataset.id);
     if (b.dataset.act === 'cm') { const r = await Engine.closePosition(a, s, 'market'); if (!r.ok) toast('error', r.error); }
     if (b.dataset.act === 'cl') ask(`Close ${s} at limit`, [{ k: 'price', label: 'Limit price', value: (Feed.tickers[s] || {}).last || '' }], async (v) => { const r = await Engine.closePosition(a, s, 'limit', +v.price); if (!r.ok) toast('error', r.error); });
-    if (b.dataset.act === 'tpsl') { const pos = a.positions[s]; ask(`${s} Take Profit / Stop Loss`, [{ k: 'tp', label: 'Take profit price (blank to clear)', value: pos.tp || '' }, { k: 'sl', label: 'Stop loss price (blank to clear)', value: pos.sl || '' }], async (v) => { const r = await Engine.setTpSl(a, s, +v.tp || null, +v.sl || null); if (!r.ok) toast('error', r.error); }); }
+    if (b.dataset.act === 'tpsl') tpslDialog(s);
   };
 
   /* ================= accounts (profile icon in the header) ================= */
