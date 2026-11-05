@@ -43,7 +43,7 @@
     } else if (m.t === 'fill') {
       Engine.emit('fill', { acct: m.acct, order: m.order, qty: m.qty, px: m.px, role: m.role });
     } else if (m.t === 'toast') {
-      Engine.emit('toast', { type: m.type, msg: m.msg });
+      Engine.emit('toast', { type: m.type, msg: m.msg, title: m.title });
     }
   }
 
@@ -63,7 +63,10 @@
     cancelAll: (a, symbol) => rpc('cancelAll', { acct: a.id, symbol }),
     closePosition: (a, symbol, type, price) => rpc('closePosition', { acct: a.id, symbol, type, price }),
     closeAll: (a) => rpc('closeAll', { acct: a.id }),
-    setTpSl: (a, symbol, tp, sl) => rpc('setTpSl', { acct: a.id, symbol, tp, sl }),
+    setTpSl: (a, symbol, tp, sl, opt = {}) => rpc('setTpSl', { acct: a.id, symbol, tp, sl, ...opt }),
+    amendOrder: (a, id, ch) => rpc('amendOrder', { acct: a.id, id, ...ch }),
+    setOrderTpSl: (a, id, tp, sl, opt = {}) => rpc('setOrderTpSl', { acct: a.id, id, tp, sl, ...opt }),
+    refresh: () => rpc('refresh', {}),
     setLeverage: (a, symbol, lev, asDefault) => rpc('setLeverage', { acct: a.id, symbol, lev, asDefault }),
     async createAccount(name, balance) { const r = await rpc('createAccount', { name, balance }); if (r.ok) Engine.switchAccount(r.id); return r; },
     renameAccount: (id, name) => rpc('renameAccount', { id, name }),

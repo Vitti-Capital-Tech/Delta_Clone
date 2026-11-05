@@ -166,6 +166,26 @@
       const o = a.orders.splice(i, 1)[0];
       o.status = o.filled > 0 ? 'partially_filled_cancelled' : 'cancelled'; o.reason = reason || 'user';
       archive(a, o); changed('orders');
+      if (o.reduceOnly && reason === 'position closed') handlers.forEach(h => h('toast', { acctId: a.id, type: 'success', title: 'Reduce only orders cancelled', msg: `Your ${o.side} reduce-only order(s) in ${o.symbol} have been cancelled.` }));
+    },
+    amendOrder(a, id, ch) {
+      const o = a.orders.find(x => x.id === id); if (!o) return { ok: false, error: 'Order not found' };
+      const old = { size: o.size, price: o.price, stop: o.stop, dir: o.dir };
+      if (ch.size != null) { const n = Math.floor(+ch.size); if (!(n > o.filled)) return { ok: false, error: 'Quantity must be more than what has already filled' }; o.size = n; }
+      if (ch.price != null && o.price != null) { const px = roundTick(o.symbol, +ch.price); if (!(px > 0)) return { ok: false, error: 'Enter a valid limit price' }; o.price = px; }
+      if (ch.stop != null && o.stop != null) {
+        const st = roundTick(o.symbol, +ch.stop); if (!(st > 0)) return { ok: false, error: 'Enter a valid trigger price' };
+        o.stop = st; const cur = o.trigger === 'last' ? last(o.symbol) : mark(o.symbol); o.dir = st > cur ? 'up' : 'down';
+      }
+      if (!o.reduceOnly && Engine.summary(a).available < -1e-9) { Object.assign(o, old); return { ok: false, error: 'Insufficient margin' }; }
+      if (o.status === 'open' && o.price) execute(a, o); // a re-priced limit may now cross the book
+      changed('orders'); return { ok: true };
+    },
+    setOrderTpSl(a, id, tp, sl, opt = {}) {
+      const o = a.orders.find(x => x.id === id); if (!o) return { ok: false, error: 'Order not found' };
+      const trig = bracketTrig(o.symbol, opt.trig || o.tpslTrig), bad = bracketError(o.symbol, o.side === 'buy' ? 1 : -1, trig, tp, sl); if (bad) return bad;
+      o.tp = tp || null; o.sl = sl || null; o.tpslTrig = trig; o.tpLim = (tp && +opt.tpLim) || null; o.slLim = (sl && +opt.slLim) || null;
+      changed('orders'); return { ok: true };
     },
     cancelAll(a, symbol) { [...a.orders].filter(o => !symbol || o.symbol === symbol).forEach(o => Engine.cancel(a, o.id)); },
     closePosition(a, s, type, price) {
@@ -173,16 +193,16 @@
       return Engine.place(a, { symbol: s, side: pos.size > 0 ? 'sell' : 'buy', type: type || 'market', size: Math.abs(pos.size), price, reduceOnly: true });
     },
     closeAll(a) { Object.keys(a.positions).forEach(s => Engine.closePosition(a, s, 'market')); },
-    /* TP/SL trigger: futures on the mark price; options on the underlying index price, as Delta shows them.
-       gainsUp: the position profits when that price rises (long future, long call, short put). */
-    tpslRef(s) { return prod(s).kind === 'perp' ? mark(s) : spotOf(s); },
-    gainsUp(size, s) { const k = prod(s).kind; return k === 'put' ? size < 0 : size > 0; },
-    setTpSl(a, s, tp, sl) {
+    /* TP/SL trigger ("Trigger Index" on Delta): the contract's mark price or the underlying index price.
+       Defaults: futures on mark, options on index. gainsUp: the position profits when that price rises. */
+    tpslRef(s, trig) { return bracketTrig(s, trig) === 'mark' ? mark(s) : spotOf(s); },
+    gainsUp(size, s, trig) { return bracketTrig(s, trig) === 'index' && prod(s).kind === 'put' ? size < 0 : size > 0; },
+    setTpSl(a, s, tp, sl, opt = {}) {
       const pos = a.positions[s]; if (!pos) return { ok: false, error: 'No position' };
-      const m = Engine.tpslRef(s), up = Engine.gainsUp(pos.size, s), what = prod(s).kind === 'perp' ? 'mark price' : 'index price';
-      if (tp && (up ? tp <= m : tp >= m)) return { ok: false, error: `Take profit must be ${up ? 'above' : 'below'} the ${what} (${+m.toFixed(2)})` };
-      if (sl && (up ? sl >= m : sl <= m)) return { ok: false, error: `Stop loss must be ${up ? 'below' : 'above'} the ${what} (${+m.toFixed(2)})` };
-      pos.tp = tp || null; pos.sl = sl || null; changed('positions'); return { ok: true };
+      const trig = bracketTrig(s, opt.trig || pos.tpslTrig), bad = bracketError(s, pos.size, trig, tp, sl); if (bad) return bad;
+      const tpLim = (tp && +opt.tpLim) || null, slLim = (sl && +opt.slLim) || null;
+      if ((tp || null) !== pos.tp || (sl || null) !== pos.sl || tpLim !== (pos.tpLim || null) || slLim !== (pos.slLim || null) || trig !== pos.tpslTrig) pos.tpslTs = Date.now();
+      pos.tp = tp || null; pos.sl = sl || null; pos.tpslTrig = trig; pos.tpLim = tpLim; pos.slLim = slLim; changed('positions'); return { ok: true };
     },
   };
 
@@ -224,6 +244,8 @@
     const fee = qty * feeUnit(o.symbol, px, role);
     const before = a.positions[o.symbol] ? a.positions[o.symbol].size : 0;
     const realized = applyFill(a, o.symbol, o.side, qty, px, fee);
+    if (before && Math.sign(before) !== (o.side === 'buy' ? 1 : -1)) o.closing = true; // "Close Buy / Close Sell" in order history
+    o.idx = spotOf(o.symbol) || px; o.fee = (o.fee || 0) + fee; o.pnl = (o.pnl || 0) + realized; // pnl is net of fees
     o.avg = (o.avg * o.filled + px * qty) / (o.filled + qty);
     o.filled += qty;
     const rec = { id: uid(), orderId: o.id, symbol: o.symbol, side: o.side, size: qty, price: px, role, fee, realized, ts: Date.now() };
@@ -232,7 +254,8 @@
     if (Engine.onFill) Engine.onFill(a, rec);
     const pos = a.positions[o.symbol];
     if (pos && (o.tp || o.sl) && Math.abs(pos.size) > 0 && Math.sign(pos.size) === (o.side === 'buy' ? 1 : -1)) {
-      if (o.tp) pos.tp = o.tp; if (o.sl) pos.sl = o.sl;
+      if (o.tp) { pos.tp = o.tp; pos.tpLim = o.tpLim || null; } if (o.sl) { pos.sl = o.sl; pos.slLim = o.slLim || null; }
+      pos.tpslTrig = bracketTrig(o.symbol, o.tpslTrig); pos.tpslTs = Date.now();
     }
     trimReduceOnly(a, o.symbol);
     if (o.filled >= o.size) {
@@ -313,9 +336,16 @@
       if (a.positions[sym] && kind !== 'book' && liquidateIfShort(a)) { dirty = true; continue; }
       const pos = a.positions[sym];
       if (pos && kind !== 'book') {
-        const m = Engine.tpslRef(sym), up = Engine.gainsUp(pos.size, sym);
-        if (pos.sl && m && (up ? m <= pos.sl : m >= pos.sl)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'info', msg: `Stop loss triggered on ${sym}` })); dirty = true; }
-        else if (pos.tp && m && (up ? m >= pos.tp : m <= pos.tp)) { pos.sl = pos.tp = null; Engine.closePosition(a, sym, 'market'); handlers.forEach(h => h('toast', { acctId: a.id, type: 'success', msg: `Take profit hit on ${sym}` })); dirty = true; }
+        const m = Engine.tpslRef(sym, pos.tpslTrig), up = Engine.gainsUp(pos.size, sym, pos.tpslTrig);
+        const hit = (leg) => {
+          const lim = pos[leg + 'Lim'], side = pos.size > 0 ? 'sell' : 'buy'; pos.sl = pos.tp = null; pos.tpLim = pos.slLim = null;
+          Engine.closePosition(a, sym, lim ? 'limit' : 'market', lim || undefined);
+          handlers.forEach(h => h('toast', { acctId: a.id, type: leg === 'tp' ? 'success' : 'error', title: leg === 'tp' ? 'Take Profit Triggered' : 'Stop Loss Triggered',
+            msg: `Your ${side} Bracket - ${leg.toUpperCase()} order in ${sym} has been triggered${lim ? ` as a limit order at ${lim}` : ' at market'}.` }));
+          dirty = true;
+        };
+        if (pos.sl && m && (up ? m <= pos.sl : m >= pos.sl)) hit('sl');
+        else if (pos.tp && m && (up ? m >= pos.tp : m <= pos.tp)) hit('tp');
       }
     }
     if (dirty) changed('market');
@@ -330,18 +360,35 @@
     return true;
   }
 
+  /* a filled order in history for a position the exchange closed itself (expiry settlement / liquidation) */
+  function closeRecord(a, sym, pos, px, type, reason, fee, pnl) {
+    const o = { id: S.nextOrder++, symbol: sym, side: pos.size > 0 ? 'sell' : 'buy', type, size: Math.abs(pos.size), filled: Math.abs(pos.size), avg: px, price: null, stop: null,
+      trigger: 'mark', reduceOnly: true, postOnly: false, tp: null, sl: null, tif: 'gtc', status: 'filled', reason, closing: true, idx: spotOf(sym) || px, fee, pnl, ts: Date.now() };
+    archive(a, o); return o;
+  }
+
+  const bracketTrig = (s, trig) => trig === 'mark' || trig === 'index' ? trig : prod(s).kind === 'perp' ? 'mark' : 'index';
+  function bracketError(s, size, trig, tp, sl) {
+    const m = Engine.tpslRef(s, trig), up = Engine.gainsUp(size, s, trig), what = trig === 'mark' ? 'mark price' : 'index price';
+    if (!m) return { ok: false, error: `No ${what} yet, try again in a moment` };
+    if (tp && (up ? tp <= m : tp >= m)) return { ok: false, error: `Take profit must be ${up ? 'above' : 'below'} the ${what} (${+m.toFixed(2)})` };
+    if (sl && (up ? sl >= m : sl <= m)) return { ok: false, error: `Stop loss must be ${up ? 'below' : 'above'} the ${what} (${+m.toFixed(2)})` };
+    return null;
+  }
+
   function liquidate(a, sym) {
     const pos = a.positions[sym], p = prod(sym), m = mark(sym);
     const realized = (m - pos.entry) * pos.size * p.cv;
     const left = Math.max(0, pos.margin + realized);
     const penalty = Math.min(left, Math.abs(pos.size) * p.cv * m * p.mmr * p.liqPenalty);
     a.balance += realized - penalty; a.realized += realized; a.fees += penalty;
-    const rec = { id: uid(), orderId: 0, symbol: sym, side: pos.size > 0 ? 'sell' : 'buy', size: Math.abs(pos.size), price: m, role: 'liquidation', fee: penalty, realized: realized - penalty, ts: Date.now() };
+    const lo = closeRecord(a, sym, pos, m, 'market', 'liquidation', penalty, realized - penalty);
+    const rec = { id: uid(), orderId: lo.id, symbol: sym, side: lo.side, size: lo.size, price: m, role: 'liquidation', fee: penalty, realized: realized - penalty, ts: lo.ts };
     a.fills.unshift(rec);
     if (Engine.onFill) Engine.onFill(a, rec);
     delete a.positions[sym];
     for (const o of [...a.orders]) if (o.symbol === sym && o.reduceOnly) Engine.cancel(a, o.id, 'liquidated');
-    handlers.forEach(h => h('toast', { acctId: a.id, type: 'error', msg: `${a.name}: ${sym} position liquidated at ${m}` }));
+    handlers.forEach(h => h('toast', { acctId: a.id, type: 'error', title: 'Position Liquidated', msg: `Your ${sym} position in ${a.name} was liquidated at ${m}.` }));
   }
 
   /* ---------- option expiry: cancel orders, cash-settle positions at the underlying spot ---------- */
@@ -356,10 +403,11 @@
         const payoff = p.kind === 'call' ? Math.max(spot - p.strike, 0) : Math.max(p.strike - spot, 0);
         const realized = (payoff - pos.entry) * pos.size * p.cv;
         a.balance += realized; a.realized += realized;
-        const rec = { id: uid(), orderId: 0, symbol: sym, side: pos.size > 0 ? 'sell' : 'buy', size: Math.abs(pos.size), price: payoff, role: 'settlement', fee: 0, realized, ts: now };
+        const so = closeRecord(a, sym, pos, payoff, 'limit', 'settlement', 0, realized);
+        const rec = { id: uid(), orderId: so.id, symbol: sym, side: so.side, size: so.size, price: payoff, role: 'settlement', fee: 0, realized, ts: now };
         a.fills.unshift(rec); if (Engine.onFill) Engine.onFill(a, rec);
         delete a.positions[sym];
-        handlers.forEach(h => h('toast', { acctId: a.id, type: realized >= 0 ? 'success' : 'info', msg: `${sym} expired. Settled at ${payoff.toFixed(p.dp)}, PnL ${realized.toFixed(2)} USD` }));
+        handlers.forEach(h => h('toast', { acctId: a.id, type: realized >= 0 ? 'success' : 'info', title: 'Position Settled', msg: `${sym} expired and settled at ${payoff.toFixed(p.dp)}. PnL ${realized.toFixed(2)} USD.` }));
         dirty = true;
       }
     }

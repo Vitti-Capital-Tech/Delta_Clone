@@ -84,7 +84,7 @@ Engine.onChange((kind, p) => {
   }
   if (kind === 'toast') {
     const a = Engine.state.accounts.find(x => x.id === p.acctId);
-    if (a) sendTo(a.userId, { t: 'toast', type: p.type, msg: p.msg });
+    if (a) sendTo(a.userId, { t: 'toast', type: p.type, msg: p.msg, title: p.title });
     return;
   }
   schedulePush();
@@ -100,6 +100,7 @@ function cleanOrder(o) {
     reduceOnly: !!o.reduceOnly, postOnly: !!o.postOnly, tp: +o.tp || null, sl: +o.sl || null, tif: o.tif === 'ioc' ? 'ioc' : 'gtc' };
 }
 function own(uid, id) { const a = Engine.state.accounts.find(x => x.id === id && x.userId === uid); if (!a) throw new Error('Account not found'); return a; }
+const bracketOpt = (m) => ({ trig: m.trig === 'mark' || m.trig === 'index' ? m.trig : undefined, tpLim: +m.tpLim || null, slLim: +m.slLim || null });
 const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? Math.min(+v, 1e9) : d);
 
 const OPS = {
@@ -137,7 +138,10 @@ const OPS = {
   async cancelAll(uid, m) { Engine.cancelAll(own(uid, m.acct), m.symbol || undefined); return { ok: true }; },
   async closePosition(uid, m) { const a = own(uid, m.acct); await ensureBook(String(m.symbol)); return Engine.closePosition(a, String(m.symbol), m.type === 'limit' ? 'limit' : 'market', +m.price || undefined); },
   async closeAll(uid, m) { const a = own(uid, m.acct); for (const s of Object.keys(a.positions)) { await ensureBook(s); Engine.closePosition(a, s, 'market'); } return { ok: true }; },
-  async setTpSl(uid, m) { return Engine.setTpSl(own(uid, m.acct), String(m.symbol), +m.tp || null, +m.sl || null); },
+  async amendOrder(uid, m) { return Engine.amendOrder(own(uid, m.acct), +m.id, { size: m.size, price: m.price, stop: m.stop }); },
+  async setOrderTpSl(uid, m) { return Engine.setOrderTpSl(own(uid, m.acct), +m.id, +m.tp || null, +m.sl || null, bracketOpt(m)); },
+  async refresh() { return { ok: true }; }, // the reply is followed by a forced state push
+  async setTpSl(uid, m) { return Engine.setTpSl(own(uid, m.acct), String(m.symbol), +m.tp || null, +m.sl || null, bracketOpt(m)); },
 };
 
 /* ---------- http + websocket ---------- */
@@ -195,7 +199,7 @@ wss.on('connection', (ws) => {
       else if (OPS[m.op]) res = await OPS[m.op](ws.user.id, m);
       else res = { ok: false, error: 'Unknown operation' };
     } catch (e) { res = { ok: false, error: e.message }; }
-    pushNow(ws.user.id);
+    pushNow(ws.user.id, m.op === 'refresh');
     ws.send(JSON.stringify({ ...res, t: 'res', rid: m.rid }));
   });
   ws.on('close', () => { if (ws.user) { const s = sockets.get(ws.user.id); if (s) { s.delete(ws); if (!s.size) { sockets.delete(ws.user.id); lastSent.delete(ws.user.id); } } } });

@@ -18,13 +18,13 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem('dx_ui2')) || {}; } catch (_) { return {}; } })();
   const ui = {
     view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
-    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(),
+    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(), ordOff: new Set(), ordAsc: false, pageSize: +saved.pageSize || 30, pages: {},
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
     lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, mtab: 'markets', mk: 'options', cview: 'price', moreOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
   };
   const watch = new Set(saved.watch || []); // ☆ markets in the picker's Watchlist tab
   const hiddenCols = new Set(saved.hiddenCols || []); // option chain columns switched off in the column picker
-  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch] })); } catch (_) {} };
+  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch], pageSize: ui.pageSize })); } catch (_) {} };
 
   /* full-screen loading screen until the markets and your account are ready */
   let fedOk = false, cliOk = false;
@@ -700,27 +700,27 @@
       if (o.type === 'tp_limit' || o.type === 'stop_limit') {
         const cur = f.trigger === 'last' ? T().last : T().mark, st = +f.stop, tp = o.type === 'tp_limit';
         // Delta: a stop-loss triggers on an adverse move, a take-profit on a favourable one for the position this order closes
-        if (st && cur && tp && (side === 'sell' ? st <= cur : st >= cur)) return toast('error', `Take profit trigger must be ${side === 'sell' ? 'above' : 'below'} the ${f.trigger} price`);
-        if (st && cur && !tp && (side === 'sell' ? st >= cur : st <= cur)) return toast('error', `Stop loss trigger must be ${side === 'sell' ? 'below' : 'above'} the ${f.trigger} price`);
+        if (st && cur && tp && (side === 'sell' ? st <= cur : st >= cur)) return toast('error', `Take profit trigger must be ${side === 'sell' ? 'above' : 'below'} the ${f.trigger} price`, 'Order Rejected');
+        if (st && cur && !tp && (side === 'sell' ? st >= cur : st <= cur)) return toast('error', `Stop loss trigger must be ${side === 'sell' ? 'below' : 'above'} the ${f.trigger} price`, 'Order Rejected');
         o.type = 'stop_limit';
       }
     }
     if (f.tpOn && (p.kind === 'perp' || ui.otype !== 'stop_limit' && ui.otype !== 'tp_limit')) {
       const opt = p.kind !== 'perp', ref = opt ? Engine.spotOf(ui.sym) : refPrice(side), up = Engine.gainsUp(side === 'buy' ? 1 : -1, ui.sym), tp = +f.tp || null, sl = +f.sl || null, what = opt ? 'index price' : 'entry price';
-      if (tp && (up ? tp <= ref : tp >= ref)) return toast('error', `Take profit must be ${up ? 'above' : 'below'} the ${what}`);
-      if (sl && (up ? sl >= ref : sl <= ref)) return toast('error', `Stop loss must be ${up ? 'below' : 'above'} the ${what}`);
+      if (tp && (up ? tp <= ref : tp >= ref)) return toast('error', `Take profit must be ${up ? 'above' : 'below'} the ${what}`, 'Order Rejected');
+      if (sl && (up ? sl >= ref : sl <= ref)) return toast('error', `Stop loss must be ${up ? 'below' : 'above'} the ${what}`, 'Order Rejected');
       o.tp = tp; o.sl = sl;
     }
     const r = await Engine.place(a, o);
-    if (!r.ok) return toast('error', r.error);
-    if (r.order.status !== 'filled' && r.order.filled === 0) toast('info', `${o.type.replace('_', ' ')} ${side} order placed – ${r.order.size} ${ui.sym}${r.order.price ? ' @ ' + fmt(r.order.price, p.dp) : ''}`);
+    if (!r.ok) return toast('error', r.error, 'Order Rejected');
+    if (r.order.status !== 'filled' && r.order.filled === 0) toast('success', `Your ${side} ${typeLbl(r.order.type)} order of ${r.order.size} lots in ${ui.sym}${r.order.price ? ' at ' + r.order.price.toFixed(p.dp) : ''} has been placed.`, 'Order Placed');
   }
 
   /* ================= bottom tables ================= */
-  const botTabs = [['positions', 'Positions'], ['orders', 'Open Orders'], ['stops', 'Stop Orders'], ['fills', 'Fills'], ['history', 'Order History'], ['account', 'Risk & Margin Details']];
+  const botTabs = [['positions', 'Positions'], ['orders', 'Open Orders'], ['stops', 'Stop Orders'], ['account', 'Risk & Margin Details'], ['fills', 'Fills'], ['history', 'Order History']];
   function renderBotTabs() {
     const a = Engine.active;
-    const cnt = { positions: Object.keys(a.positions).length, orders: a.orders.filter(o => o.status === 'open').length, stops: a.orders.filter(o => o.status === 'untriggered').length };
+    const cnt = { positions: Object.keys(a.positions).length, orders: a.orders.filter(o => o.status === 'open').length, stops: stopRows().length };
     if (!$('#btL')) $('#botTabs').innerHTML = '<span id="btL" class="btl"></span><span class="grow"></span><span id="btR" class="btr"></span>';
     const sm = Engine.summary(a), mmr = sm.equity > 0 ? Engine.maintenance(a) / sm.equity : 1;
     const health = mmr < 0.5 ? ['ok', 'Healthy'] : mmr < 1 ? ['warn', 'At Risk'] : ['bad', 'Liquidation'];
@@ -729,18 +729,107 @@
     if ($('#btR').dataset.k !== ui.botTab) {
       $('#btR').dataset.k = ui.botTab;
       $('#btR').innerHTML = ui.botTab === 'positions' ? `<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div><button class="bt-pay" data-k="payoff">${IC_PAY}Payoff</button><button class="bt-close" data-k="closeall">Close All Positions</button>`
-        : ui.botTab === 'orders' || ui.botTab === 'stops' ? '<button class="bt-close" data-k="cancelall">Cancel All</button>' : '';
+        : ui.botTab === 'orders' || ui.botTab === 'stops' ? '<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div><button class="bt-close" data-k="cancelall">Cancel All Orders</button>'
+        : ui.botTab === 'fills' || ui.botTab === 'history' ? `<a class="bt-link" data-k="refresh">${IC_REF}Refresh</a><a class="bt-link acc" data-k="csv">${IC_DL}Download</a>` : '';
       const q = $('#posQ'); if (q) { q.value = ui.posQ; q.oninput = () => { ui.posQ = q.value; dirty(true); }; }
     }
   }
+  const IC_REF = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>';
+  const IC_DL = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>';
   const IC_PAY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 12.5h13M2.5 11l4-4 2.5 2 5-5.5"/></svg>';
   $('#botTabs').onclick = (e) => {
     const k = e.target.closest('[data-k]') && e.target.closest('[data-k]').dataset.k; if (!k) return;
     if (k === 'closeall') return closeAllDialog();
-    if (k === 'cancelall') return Engine.cancelAll(Engine.active);
+    if (k === 'cancelall') return cancelAllDialog();
     if (k === 'payoff') return payoffDialog();
+    if (k === 'csv') return downloadCsv();
+    if (k === 'refresh') { const b = e.target.closest('[data-k]'); b.classList.add('spin'); Engine.refresh().then(() => { setTimeout(() => b.classList.remove('spin'), 400); dirty(true); }); return; }
     ui.botTab = k; dirty(true);
   };
+  /* the All / Current Contract / Options / Futures chips (and search) used by every table */
+  const symShown = (sym, search) => {
+    const p = Feed.products[sym]; if (!p) return false;
+    if (ui.posFilter === 'current' && sym !== ui.sym) return false;
+    if (ui.posFilter === 'options' && p.kind === 'perp') return false;
+    if (ui.posFilter === 'futures' && p.kind !== 'perp') return false;
+    return !search || !ui.posQ.trim() || sym.toLowerCase().includes(ui.posQ.trim().toLowerCase());
+  };
+  const byTime = (a, b) => (ui.ordAsc ? 1 : -1) * (a.ts - b.ts);
+  const lotsSigned = (side, n) => `<span class="${side === 'buy' ? 'buy' : 'sell'}">${side === 'buy' ? '' : '-'}${fmt(n, 0)}</span>`;
+  const baseQty = (p, n) => `${(n * p.cv).toFixed(decOf(p.cv))} ${esc(p.unit || p.base)}`;
+  const notionalOf = (sym, lots, px) => { const p = Feed.products[sym]; return lots * p.cv * (p.kind === 'perp' ? (px || (Feed.tickers[sym] || {}).mark || 0) : Engine.spotOf(sym)); };
+  /* Stop Orders: real stop orders plus each position's TP / SL, which Delta lists as "Bracket - TP / SL" */
+  function stopRows() {
+    const a = Engine.active, rows = a.orders.filter(o => o.status === 'untriggered').map(o => ({ key: 'o' + o.id, o, sym: o.symbol, side: o.side, lots: o.size - o.filled, ts: o.ts }));
+    for (const [sym, pos] of Object.entries(a.positions)) for (const leg of ['tp', 'sl']) if (pos[leg]) {
+      const up = Engine.gainsUp(pos.size, sym, pos.tpslTrig), above = leg === 'tp' ? up : !up;
+      rows.push({ key: `b${leg}:${sym}`, leg, sym, pos, side: pos.size > 0 ? 'sell' : 'buy', lots: Math.abs(pos.size), trig: pos[leg], above, ts: pos.tpslTs || pos.opened || 0 });
+    }
+    return rows;
+  }
+  const histTime = (ts) => { const d = new Date(ts), h = d.getHours(); return `${z2(d.getDate())} - ${MON[d.getMonth()]} - ${String(d.getFullYear()).slice(2)}, ${h % 12 || 12}:${z2(d.getMinutes())}:${z2(d.getSeconds())} ${h < 12 ? 'Am' : 'Pm'}`; };
+  const clock = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const dayCell = (ts, yr) => { const d = new Date(ts); return `<b class="tday">${yr ? d.getDate() : z2(d.getDate())} ${MON[d.getMonth()]}${yr ? ' ' + String(d.getFullYear()).slice(2) : ''}</b><small class="mut tclk">${clock(ts)}</small>`; };
+  const typeLbl = (t) => ({ limit: 'Limit', market: 'Market', stop_limit: 'Stop Limit', stop_market: 'Stop Market' })[t] || t;
+  const orderById = (id) => { const a = Engine.active; return a.orders.find(o => o.id === id) || a.history.find(o => o.id === id); };
+  /* per order: net PnL and fees (recorded on new orders; older ones are summed from their fills) */
+  function orderPnl(o) {
+    if (o.pnl !== undefined) return { pnl: o.pnl, fee: o.fee || 0 };
+    let pnl = 0, fee = 0; for (const f of Engine.active.fills) if (f.orderId === o.id) { pnl += f.realized || 0; fee += f.fee || 0; }
+    return { pnl, fee };
+  }
+  /* rows of each order table as plain values: drawn as HTML and exported as CSV */
+  function tableData(k) {
+    const a = Engine.active;
+    if (k === 'fills') return a.fills.filter(f => symShown(f.symbol)).map(f => {
+      const p = Feed.products[f.symbol] || { cv: 1, kind: 'perp', dp: 2, unit: '' }, o = orderById(f.orderId) || {};
+      const nt = f.size * p.cv * (p.kind === 'perp' ? f.price : (o.idx || Engine.spotOf(f.symbol) || f.price));
+      return { f, p, nt, otype: o.type || (f.role === 'liquidation' ? 'market' : 'limit'), oqty: o.size || f.size,
+        ftype: f.role === 'settlement' ? 'Settlement' : f.role === 'liquidation' ? 'Liquidation' : 'Normal', role: f.role === 'maker' ? 'Maker' : 'Taker' };
+    });
+    if (k === 'history') return a.history.filter(o => symShown(o.symbol)).map(o => {
+      const p = Feed.products[o.symbol] || { cv: 1, kind: 'perp', dp: 2, unit: '' }, { pnl, fee } = orderPnl(o);
+      const closing = o.closing !== undefined ? o.closing : (o.reduceOnly || Math.abs(pnl + fee) > 1e-9);
+      const cash = p.kind === 'perp' || o.reason === 'settlement' ? 0 : (o.side === 'buy' ? -1 : 1) * o.filled * p.cv * (o.avg || 0);
+      const st = { filled: 'Filled', cancelled: 'Cancelled', partially_filled_cancelled: 'Partially Filled' }[o.status] || o.status;
+      return { o, p, pnl, fee, closing, cash, st: o.reason === 'expired' ? 'Expired' : st };
+    });
+    return [];
+  }
+  function downloadCsv() {
+    const k = ui.botTab, q = (v) => { const t = String(v == null ? '' : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    let head, rows;
+    if (k === 'fills') {
+      head = ['Symbol', 'Fill Qty (Lot)', 'Side', 'Order Qty (Lot)', 'Execution Price', 'Notional (USD)', 'Size', 'Fill Type', 'Order Type', 'Role', 'Fee (USD)', 'Realized PnL (USD)', 'Order ID', 'Fill ID', 'Time'];
+      rows = tableData('fills').map(({ f, p, nt, otype, oqty, ftype, role }) => [f.symbol, (f.side === 'buy' ? '' : '-') + f.size, f.side === 'buy' ? 'Buy' : 'Sell', oqty, f.price, nt.toFixed(4), (f.side === 'buy' ? '' : '-') + (f.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), ftype, typeLbl(otype), role, (f.fee || 0).toFixed(4), (f.realized || 0).toFixed(4), f.orderId || '', f.id, new Date(f.ts).toISOString()]);
+    } else {
+      head = ['Symbol', 'Qty (Lot)', 'Side', 'Status', 'Filled (Lot)', 'Order Type', 'Limit Price', 'Trigger Price', 'Execution Price', 'Size', 'Cashflow (USD)', 'Realized PnL (USD)', 'Trading Fees Inc. GST (USD)', 'Net PnL (USD)', 'Order ID', 'Reduce-Only', 'Time'];
+      rows = tableData('history').map(({ o, p, pnl, fee, closing, cash, st }) => [o.symbol, (o.side === 'buy' ? '' : '-') + o.size, (closing ? 'Close ' : 'Open ') + (o.side === 'buy' ? 'Buy' : 'Sell'), st, o.filled, typeLbl(o.type), o.price || '', o.stop || '', o.avg || '', (o.side === 'buy' ? '' : '-') + (o.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), cash.toFixed(2), (pnl + fee).toFixed(4), fee.toFixed(4), pnl.toFixed(4), o.id, o.reduceOnly ? 'Yes' : 'No', new Date(o.ts).toISOString()]);
+    }
+    const csv = [head, ...rows].map(r => r.map(q).join(',')).join('\n'), d = new Date();
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), el = document.createElement('a');
+    el.href = url; el.download = `delta-demo-${k === 'fills' ? 'fills' : 'order-history'}-${d.getFullYear()}${z2(d.getMonth() + 1)}${z2(d.getDate())}.csv`; el.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000); toast('success', `${rows.length} rows saved as CSV.`, 'Download Complete');
+  }
+  function cancelAllDialog() {
+    const a = Engine.active, k = ui.botTab;
+    const ords = k === 'stops' ? stopRows().filter(r => symShown(r.sym, true) && !ui.ordOff.has(r.key)) : a.orders.filter(o => o.status === 'open' && symShown(o.symbol, true) && !ui.ordOff.has('o' + o.id)).map(o => ({ key: 'o' + o.id, o, sym: o.symbol }));
+    if (!ords.length) return toast('info', 'No orders selected');
+    ask(`Cancel ${ords.length} order${ords.length > 1 ? 's' : ''}?`, [], async () => { for (const r of ords) await cancelRow(r); }, { ok: 'Cancel Orders', danger: true, note: ords.map(r => r.sym).join(', ') });
+  }
+  async function cancelOrder(o) {
+    const r = await Engine.cancel(Engine.active, o.id);
+    if (r && r.ok === false) return toast('error', r.error);
+    toast('error', `Your ${o.side} ${typeLbl(o.type)} order in ${o.symbol} has been cancelled.`, 'Order Cancelled');
+  }
+  async function cancelRow(r) {
+    const a = Engine.active;
+    if (r.o) return cancelOrder(r.o);
+    const pos = a.positions[r.sym]; if (!pos) return;
+    const res = await Engine.setTpSl(a, r.sym, r.leg === 'tp' ? null : pos.tp, r.leg === 'sl' ? null : pos.sl, { trig: pos.tpslTrig, tpLim: pos.tpLim, slLim: pos.slLim });
+    if (!res.ok) return toast('error', res.error);
+    toast('error', `Your ${r.side} Bracket - ${r.leg.toUpperCase()} order in ${r.sym} has been cancelled.`, 'Order Cancelled');
+  }
   /* positions the toolbar filters / search / checkboxes leave in view, sorted by time placed */
   function shownPositions() {
     const a = Engine.active, q = ui.posQ.trim().toLowerCase();
@@ -770,12 +859,64 @@
     $('#clMkt').onclick = async () => { closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'market'); if (!r.ok) toast('error', r.error); };
     $('#clLim').onclick = async () => { const v = +$('#clPx').value; closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'limit', v); if (!r.ok) toast('error', r.error); };
   }
-  function tpslDialog(sym) {
-    const pos = Engine.active.positions[sym], p = Feed.products[sym]; if (!pos) return;
-    const ref = Engine.tpslRef(sym), up = Engine.gainsUp(pos.size, sym), what = p.kind === 'perp' ? 'mark price' : `${p.under} index price`;
-    ask(`${sym} · TP / SL`, [{ k: 'tp', label: `Take profit (${up ? 'above' : 'below'} ${+ref.toFixed(2)}) – blank for none`, value: pos.tp || '' }, { k: 'sl', label: `Stop loss (${up ? 'below' : 'above'} ${+ref.toFixed(2)}) – blank for none`, value: pos.sl || '' }],
-      async (v) => { const r = await Engine.setTpSl(Engine.active, sym, +v.tp || null, +v.sl || null); if (!r.ok) return toast('error', r.error); toast('success', `TP / SL set on ${sym}`); },
-      { ok: 'Save', note: `Triggers on the ${what} and closes the whole position at market.` });
+  /* "Add / Edit Bracket Order" for a position (sym) or for an open order (id) */
+  function bracketDialog({ sym, id }) {
+    const a = Engine.active, o = id ? a.orders.find(x => x.id === id) : null, pos = sym ? a.positions[sym] : null; if (!o && !pos) return;
+    const S = sym || o.symbol, p = Feed.products[S], src = pos || o, size = pos ? pos.size : (o.side === 'buy' ? 1 : -1) * (o.size - o.filled);
+    const entry = pos ? pos.entry : (o.price || (Feed.tickers[S] || {}).mark || 0), edit = !!(src.tp || src.sl);
+    const st = { trig: src.tpslTrig || (p.kind === 'perp' ? 'mark' : 'index'), tpLimit: !!src.tpLim, slLimit: !!src.slLim };
+    const ref = () => Engine.tpslRef(S, st.trig), up = () => Engine.gainsUp(size, S, st.trig);
+    const leg = (k, title) => `<div class="bk-sec"><div class="bk-h"><b class="dl">${title}</b><button class="bk-type" data-type="${k}"></button></div>
+      <label class="dl">Trigger Price</label><div class="bk-inp"><input id="bk_${k}" inputmode="decimal" placeholder="Trigger Price USD" value="${src[k] || ''}"></div>
+      <div class="bk-pct">${[5, 10, 15, 20].map(x => `<a data-pct="${x}" data-leg="${k}">${x}%</a>`).join('')}<span id="bkp_${k}">0%</span></div>
+      <div class="bk-lim" id="bkl_${k}"><label class="dl">Limit Price</label><div class="bk-inp"><input id="bkL_${k}" inputmode="decimal" placeholder="Limit Price USD" value="${src[k + 'Lim'] || ''}"></div></div></div>`;
+    modal(`<div class="bk"><h3>${edit ? 'Edit' : 'Add'} Bracket Order: ${esc(S)} <button class="x" data-close>×</button></h3>
+      <div class="bk-row"><span>${pos ? 'Entry Price' : 'Order Price'}</span><b>${(+entry).toFixed(p.dp)}</b></div>
+      <div class="bk-row"><span class="dl">Trigger Index</span><select id="bkTrig" class="bk-sel"></select></div>
+      ${leg('tp', 'Take Profit')}<div class="bk-div"></div>${leg('sl', 'Stop Loss')}
+      <div class="bk-foot ${edit ? 'edit' : ''}"><div class="bk-pnl"><div><span>Exit PnL</span><b id="bkPnl_tp">-</b></div><div><span>Stop PnL</span><b id="bkPnl_sl">-</b></div></div>
+        <button class="bk-ok" id="bkOk">${edit ? 'Update' : 'Confirm'}</button></div></div>`);
+    const box = $('#mbox'); box.classList.add('bkbox');
+    const val = (k) => +$('#bk_' + k).value || 0;
+    // estimated exit price at a trigger: mark trigger = that price; index trigger = mark moved by delta (options) or 1:1 (futures)
+    const exitPx = (k) => {
+      const lim = st[k + 'Limit'] && +$('#bkL_' + k).value; if (lim) return lim;
+      const t = Feed.tickers[S] || {}, trig = val(k); if (!trig) return 0;
+      if (st.trig === 'mark') return trig;
+      const d = p.kind === 'perp' ? 1 : ((t.greeks && t.greeks.delta) || 0);
+      return Math.max(0, (t.mark || 0) + d * (trig - Engine.spotOf(S)));
+    };
+    const draw = () => {
+      const t = Feed.tickers[S] || {};
+      $('#bkTrig').innerHTML = `<option value="index"${st.trig === 'index' ? ' selected' : ''}>Index ${num1(Engine.spotOf(S), 1)}</option><option value="mark"${st.trig === 'mark' ? ' selected' : ''}>Mark ${(t.mark || 0).toFixed(p.dp)}</option>`;
+      for (const k of ['tp', 'sl']) {
+        box.querySelector(`[data-type="${k}"]`).textContent = st[k + 'Limit'] ? 'Limit' : 'Market';
+        $('#bkl_' + k).style.display = st[k + 'Limit'] ? '' : 'none';
+        const v = val(k), r = ref(); $('#bkp_' + k).textContent = v && r ? (Math.abs(v - r) / r * 100).toFixed(2) + '%' : '0%';
+        const ex = exitPx(k), pnl = ex ? (ex - entry) * size * p.cv : null, el = $('#bkPnl_' + k);
+        el.textContent = pnl == null ? '-' : `${st.trig === 'index' && !st[k + 'Limit'] && p.kind !== 'perp' ? '≈ ' : ''}${sgn(pnl)} USD`; el.className = pnl == null ? '' : cls(pnl);
+      }
+    };
+    draw();
+    box.oninput = draw;
+    box.onchange = (e) => { if (e.target.id === 'bkTrig') { st.trig = e.target.value; draw(); } };
+    box.onclick = async (e) => {
+      if (e.target.closest('[data-close]')) return closeModal();
+      const ty = e.target.closest('[data-type]'); if (ty) { const k = ty.dataset.type + 'Limit'; st[k] = !st[k]; return draw(); }
+      const pc = e.target.closest('[data-pct]'); if (pc) {
+        const k = pc.dataset.leg, x = +pc.dataset.pct / 100, r = ref(), gain = up() ? 1 : -1, dir = k === 'tp' ? gain : -gain;
+        const tick = st.trig === 'mark' ? p.tick : 0.1, v = Math.max(tick, Math.round(r * (1 + dir * x) / tick) * tick);
+        $('#bk_' + k).value = +v.toFixed(st.trig === 'mark' ? p.dp : 1); return draw();
+      }
+      if (e.target.closest('#bkOk')) {
+        const tp = val('tp') || null, sl = val('sl') || null;
+        const opt = { trig: st.trig, tpLim: st.tpLimit ? (+$('#bkL_tp').value || null) : null, slLim: st.slLimit ? (+$('#bkL_sl').value || null) : null };
+        if ((st.tpLimit && tp && !opt.tpLim) || (st.slLimit && sl && !opt.slLim)) return toast('error', 'Enter a limit price or switch that leg to Market', 'Bracket Order');
+        const r = pos ? await Engine.setTpSl(a, S, tp, sl, opt) : await Engine.setOrderTpSl(a, o.id, tp, sl, opt);
+        if (!r.ok) return toast('error', r.error, 'Bracket Order Rejected');
+        closeModal(); toast('success', pos ? `Your bracket order for ${S} has been ${edit ? 'updated' : 'placed'}.` : `TP / SL will be attached to ${S} when this order fills.`, edit ? 'Bracket Order Updated' : 'Bracket Order Placed');
+      }
+    };
   }
   /* Payoff: P&L at expiry of the selected positions in one underlying, against that underlying's price */
   function payoffDialog() {
@@ -813,7 +954,14 @@
   function botHtml() {
     const a = Engine.active, k = ui.botTab;
     // column headings stay visible even when empty, so the panel below the fold reads as a table
-    const tbl = (head, rows, msg) => `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` + (rows.length ? '' : `<div class="empty">${msg}</div>`);
+    // Delta-style pages: "30 / Page" with ‹ 1 - 30 › under each table
+    const tbl = (head, rows, msg) => {
+      const n = rows.length, size = ui.pageSize, pages = Math.max(1, Math.ceil(n / size)), pg = Math.min(ui.pages[k] || 1, pages); ui.pages[k] = pg;
+      const from = n ? (pg - 1) * size + 1 : 0, to = Math.min(n, pg * size);
+      const pager = `<div class="pager"><select data-pgsz>${[10, 20, 30, 50, 100].map(x => `<option value="${x}"${x === size ? ' selected' : ''}>${x} / Page</option>`).join('')}</select>
+        <button data-pg="-1" ${pg <= 1 ? 'disabled' : ''} title="Previous page">‹</button><span>${from} - ${to}</span><button data-pg="1" ${pg >= pages ? 'disabled' : ''} title="Next page">›</button></div>`;
+      return `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(from ? from - 1 : 0, to).join('')}</tbody></table>` + (n ? '' : `<div class="empty">${msg}</div>`) + pager;
+    };
     if (k === 'positions') {
       const list = shownPositions(), all = list.length && list.every(([sym]) => !ui.posOff.has(sym));
       const tot = list.reduce((acc, [sym, pos]) => acc + Engine.upnl(pos, sym), 0);
@@ -838,42 +986,108 @@
           <td><button class="pclose" data-act="close" data-s="${s}" title="Close position">✕</button></td></tr>`;
       }), 'No open positions');
     }
-    if (k === 'orders' || k === 'stops') {
-      const list = a.orders.filter(o => (k === 'orders') === (o.status === 'open'));
-      return tbl(['Symbol', 'Type', 'Side', 'Size', 'Filled', k === 'stops' ? 'Trigger' : 'Price', 'Flags', 'Time', ''], list.map(o => `<tr><td><b>${o.symbol}</b></td><td>${typeName(o)}</td><td class="${o.side === 'buy' ? 'buy' : 'sell'}">${o.side}</td>
-        <td>${fmt(o.size, 0)}</td><td>${fmt(o.filled, 0)}</td><td>${k === 'stops' ? `${o.dir === 'up' ? '≥' : '≤'} ${fmt(o.stop, dp(o.symbol))} (${o.trigger})` : fmt(o.price, dp(o.symbol))}${k === 'stops' && o.price ? ' → ' + fmt(o.price, dp(o.symbol)) : ''}</td>
-        <td class="mut">${o.reduceOnly ? 'Reduce ' : ''}${o.postOnly ? 'Post ' : ''}</td><td class="mut">${time(o.ts)}</td><td><button class="btn dng" data-act="cx" data-id="${o.id}">Cancel</button></td></tr>`), k === 'orders' ? 'No open orders' : 'No stop orders');
+    const chips = (right) => `<div class="pbar"><div class="pchips">${[['all', 'All'], ['current', 'Current Contract'], ['options', 'Options'], ['futures', 'Futures']].map(([f, l]) => `<a data-pf="${f}" class="${f === ui.posFilter ? 'on' : ''}">${l}</a>`).join('')}</div><span class="grow"></span>${right || ''}</div>`;
+    const sorting = `<select class="psel" data-sort-ord><option value="desc"${ui.ordAsc ? '' : ' selected'}>Sorting: Newest first</option><option value="asc"${ui.ordAsc ? ' selected' : ''}>Sorting: Oldest first</option></select>`;
+    const ck = (key) => `<input type="checkbox" class="pck" data-act="ock" data-key="${key}" ${ui.ordOff.has(key) ? '' : 'checked'}>`;
+    const ckAll = (keys) => `<input type="checkbox" class="pck" data-act="ockall" data-keys="${keys.join(' ')}" ${keys.length && keys.every(x => !ui.ordOff.has(x)) ? 'checked' : ''}>`;
+    const sym = (s, side) => `<td class="psym ${side === 'buy' ? 'l' : 's'}"><a data-sym="${s}">${s}</a></td>`;
+    const yes = (v) => v ? '✓' : '✕', usdc = (v, d = 2) => `${fmt(v, d)} <span class="mut">USD</span>`;
+    if (k === 'orders') {
+      const list = a.orders.filter(o => o.status === 'open' && symShown(o.symbol, true)).sort(byTime);
+      const head = [ckAll(list.map(o => 'o' + o.id)), 'Symbol', 'Qty (Lot)', 'Filled (Lot)', 'Size', 'Notional', 'Type', 'Reduce Only', 'Limit Price', 'Execution Price', '<span class="dl">TP / SL</span>', 'Time', 'Action'];
+      return chips(sorting) + tbl(head, list.map(o => {
+        const p = Feed.products[o.symbol], rem = o.size - o.filled;
+        return `<tr><td>${ck('o' + o.id)}</td>${sym(o.symbol, o.side)}<td><a class="ul ${o.side === 'buy' ? 'buy' : 'sell'}" data-act="oqty" data-id="${o.id}">${fmt(o.size, 0)}</a></td><td>${fmt(o.filled, 0)}</td>
+          <td>${baseQty(p, o.size)}</td><td>${usdc(notionalOf(o.symbol, rem, o.price))}</td><td>${typeLbl(o.type)}</td><td>${yes(o.reduceOnly)}</td>
+          <td><a class="ul buy" data-act="opx" data-id="${o.id}">${o.price ? o.price.toFixed(p.dp) : '-'}</a></td><td>${o.filled ? o.avg.toFixed(p.dp) : '-'}</td>
+          <td>${o.tp || o.sl ? `<a class="otp" data-act="otpsl" data-id="${o.id}">TP ${o.tp ? num1(o.tp, 2) : '-'} / SL ${o.sl ? num1(o.sl, 2) : '-'} ✎</a>` : `<a class="oadd" data-act="otpsl" data-id="${o.id}">+ Add</a>`}</td>
+          <td>${dayCell(o.ts, true)}</td><td><button class="pclose" data-act="cx" data-id="${o.id}" title="Cancel order">✕</button></td></tr>`;
+      }), 'No open orders');
     }
-    if (k === 'fills') return tbl(['Time', 'Symbol', 'Side', 'Size', 'Price', 'Role', 'Fee (incl. GST)', 'Realised PnL'], a.fills.slice(0, 100).map(x =>
-      `<tr><td class="mut">${time(x.ts)}</td><td>${x.symbol}</td><td class="${x.side === 'buy' ? 'buy' : 'sell'}">${x.side}</td><td>${fmt(x.size, 0)}</td><td>${fmt(x.price, dp(x.symbol))}</td><td>${x.role}</td><td>${fmt(x.fee, 4)}</td><td class="${cls(x.realized)}">${x.realized ? sgn(x.realized) : '--'}</td></tr>`), 'No fills yet');
-    if (k === 'history') return tbl(['Time', 'Symbol', 'Type', 'Side', 'Size', 'Filled', 'Avg. price', 'Status'], a.history.slice(0, 100).map(o =>
-      `<tr><td class="mut">${time(o.ts)}</td><td>${o.symbol}</td><td>${typeName(o)}</td><td class="${o.side === 'buy' ? 'buy' : 'sell'}">${o.side}</td><td>${fmt(o.size, 0)}</td><td>${fmt(o.filled, 0)}</td><td>${o.avg ? fmt(o.avg, dp(o.symbol)) : '--'}</td><td>${o.status.replace(/_/g, ' ')}${o.reason && o.reason !== 'user' ? ` <span class="mut">(${o.reason})</span>` : ''}</td></tr>`), 'No order history');
-    const s = Engine.summary(a), pnl = s.equity - a.initial;
-    return `<table><tbody>${[['Account', esc(a.name)], ['Wallet balance', fmt(s.balance) + ' USD'], ['Unrealised PnL', `<span class="${cls(s.upnl)}">${sgn(s.upnl)} USD</span>`], ['Equity', fmt(s.equity) + ' USD'],
-      ['Position margin', fmt(s.posMargin) + ' USD'], ['Order margin', fmt(s.ordMargin) + ' USD'], ['Available balance', fmt(s.available) + ' USD'], ['Realised PnL', `<span class="${cls(a.realized)}">${sgn(a.realized)} USD</span>`],
-      ['Fees paid', fmt(a.fees) + ' USD'], ['Funding paid', `<span class="${cls(-a.funding)}">${fmt(a.funding)} USD</span>`], ['Total PnL since start', `<span class="${cls(pnl)}">${sgn(pnl)} USD</span>`]].map(([l, v]) => `<tr><td class="mut" style="width:220px">${l}</td><td>${v}</td></tr>`).join('')}</tbody></table>`;
+    if (k === 'stops') {
+      const list = stopRows().filter(r => symShown(r.sym, true)).sort(byTime);
+      const head = [ckAll(list.map(r => r.key)), 'Symbol', 'Qty (Lot)', 'Size', 'Notional', 'Trigger Price', 'Trigger Index', 'Triggering Price', 'Type', 'Limit Price', 'Reduce Only', 'Status', 'Time', 'Action'];
+      return chips(sorting) + tbl(head, list.map(r => {
+        const p = Feed.products[r.sym], o = r.o, opt = p.kind !== 'perp';
+        const trig = o ? o.stop : r.trig, cond = o ? (o.dir === 'up' ? '>=' : '<=') : (r.above ? '>=' : '<=');
+        const btrig = r.pos ? (r.pos.tpslTrig || (opt ? 'index' : 'mark')) : null;
+        const idxName = o ? (o.trigger === 'last' ? 'Last Price' : 'Mark Price') : (btrig === 'index' ? 'Index Price' : 'Mark Price');
+        const now = o ? (o.trigger === 'last' ? (Feed.tickers[r.sym] || {}).last : (Feed.tickers[r.sym] || {}).mark) : Engine.tpslRef(r.sym, btrig);
+        const type = o ? typeLbl(o.type) : (r.leg === 'tp' ? 'Bracket - TP' : 'Bracket - SL');
+        return `<tr><td>${ck(r.key)}</td>${sym(r.sym, r.side)}<td>${lotsSigned(r.side, r.lots)}</td><td class="buy">${baseQty(p, r.lots)}</td><td>${usdc(notionalOf(r.sym, r.lots, trig))}</td>
+          <td>${cond}<a class="ul" data-act="ostop" data-key="${r.key}">${num1(trig, 2)}</a></td><td>${idxName}</td><td>${now ? num1(now, 2) : '-'}</td><td>${type}</td>
+          <td>${o && o.price ? o.price.toFixed(p.dp) : r.pos && r.pos[r.leg + 'Lim'] ? (+r.pos[r.leg + 'Lim']).toFixed(p.dp) : '-'}</td><td>${yes(o ? o.reduceOnly : true)}</td><td>Untriggered</td><td>${dayCell(r.ts)}</td>
+          <td><button class="pclose" data-act="scx" data-key="${r.key}" title="Cancel">✕</button></td></tr>`;
+      }), 'No stop orders');
+    }
+    if (k === 'fills') {
+      const head = ['Symbol', 'Fill Qty (Lot)', 'Side', 'Order Qty (Lot)', 'Execution Price', 'Notional', '<span class="dl">Size</span>', 'Fill Type', 'Order Type', 'Role', 'Order ID', 'Fill ID', 'Time'];
+      return chips() + tbl(head, tableData('fills').map(({ f, p, nt, otype, oqty, ftype, role }) => `<tr>${sym(f.symbol, f.side)}<td>${lotsSigned(f.side, f.size)}</td>
+        <td class="${f.side === 'buy' ? 'buy' : 'sell'}">${f.side === 'buy' ? 'Buy' : 'Sell'}</td><td>${lotsSigned(f.side, oqty)}</td><td>${(+f.price).toFixed(p.dp)}</td><td>${usdc(nt, 4)}</td>
+        <td class="${f.side === 'buy' ? 'buy' : 'sell'}">${f.side === 'buy' ? '+' : '-'}${baseQty(p, f.size)}</td><td>${ftype}</td><td>${typeLbl(otype)}</td><td>${role}</td>
+        <td>${f.orderId || '-'}</td><td class="mut" title="${esc(f.id)}">${esc(String(f.id).slice(0, 5).toUpperCase())}...</td><td>${dayCell(f.ts)}</td></tr>`), 'No fills yet');
+    }
+    if (k === 'history') {
+      const head = ['Symbol', 'Qty (Lot)', 'Side', 'Status', 'Filled (Lot)', 'Order Type', 'Limit Price', 'Trigger Price', 'Execution Price', '<span class="dl">Size</span>', 'Cashflow', 'Realized PnL', 'Trading Fees (Inc. GST)', 'Net PnL (USD)', 'Order ID', 'Reduce-Only', 'Automation ID', 'Share', 'Time'];
+      return chips() + tbl(head, tableData('history').map(({ o, p, pnl, fee, closing, cash, st }) => `<tr>${sym(o.symbol, o.side)}<td>${lotsSigned(o.side, o.size)}</td>
+        <td class="${o.side === 'buy' ? 'buy' : 'sell'}">${closing ? 'Close' : 'Open'} ${o.side === 'buy' ? 'Buy' : 'Sell'}</td><td class="${st === 'Filled' ? 'buy' : 'mut'}">${st}</td><td>${fmt(o.filled, 0)}</td>
+        <td>${typeLbl(o.type)}</td><td>${o.price ? o.price.toFixed(p.dp) : '-'}</td><td>${o.stop ? o.stop.toFixed(p.dp) : '-'}</td><td>${o.filled ? (+o.avg).toFixed(p.dp) : '-'}</td>
+        <td class="${o.side === 'buy' ? 'buy' : 'sell'}">${o.side === 'buy' ? '+' : '-'}${baseQty(p, o.size)}</td><td>${usdc(cash)}</td><td>${usdc(pnl + fee)}</td><td>${usdc(fee)}</td><td>${usdc(pnl)}</td>
+        <td>${o.id}</td><td>${yes(o.reduceOnly)}</td><td>-</td><td><button class="ib" data-act="hshare" data-id="${o.id}" title="Copy order">${IC_SHARE}</button></td><td class="nowrap">${histTime(o.ts)}</td></tr>`), 'No order history');
+    }
+    // Risk & Margin Details: status, initial and maintenance margin (with % of equity)
+    const s = Engine.summary(a), im = s.posMargin + s.ordMargin, mm = Engine.maintenance(a), pc = (v) => s.equity > 0 ? ` <span class="mut">(${(v / s.equity * 100).toFixed(2)}%)</span>` : '';
+    const ratio = s.equity > 0 ? mm / s.equity : 1, health = ratio < 0.5 ? ['buy', 'Healthy'] : ratio < 1 ? ['acc', 'At Risk'] : ['sell', 'Liquidation'];
+    return `<table class="rtbl"><thead><tr><th>Status</th><th><span class="dl">Initial Margin</span></th><th class="r"><span class="dl">Maintenance Margin</span></th></tr></thead>
+      <tbody><tr><td><span class="dl ${health[0]}">${health[1]}</span></td><td><b>$${fmt(im)}</b>${pc(im)}</td><td class="r"><b>$${fmt(mm)}</b>${pc(mm)}</td></tr></tbody></table>`;
   }
   const IC_SHARE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="8" r="2"/><circle cx="12" cy="3.5" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M5.8 7l4.4-2.5M5.8 9l4.4 2.5"/></svg>';
+  $('#botView').addEventListener('change', (e) => {
+    if (e.target.matches('[data-sort-ord]')) { ui.ordAsc = e.target.value === 'asc'; dirty(true); }
+    if (e.target.matches('[data-pgsz]')) { ui.pageSize = +e.target.value; ui.pages = {}; saveUi(); dirty(true); }
+  });
   $('#botView').onclick = async (e) => {
-    const pf = e.target.closest('[data-pf]'); if (pf) { ui.posFilter = pf.dataset.pf; return dirty(true); }
+    const pf = e.target.closest('[data-pf]'); if (pf) { ui.posFilter = pf.dataset.pf; ui.pages = {}; return dirty(true); }
+    const pg = e.target.closest('[data-pg]'); if (pg && !pg.disabled) { ui.pages[ui.botTab] = (ui.pages[ui.botTab] || 1) + +pg.dataset.pg; $('#botView').scrollTop = 0; return dirty(true); }
     const sym = e.target.closest('[data-sym]'); if (sym) return selectSymbol(sym.dataset.sym);
     const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     const a = Engine.active, s = b.dataset.s;
     if (b.dataset.act === 'psort') { ui.posAsc = !ui.posAsc; return dirty(true); }
+    if (b.dataset.act === 'ock') { if (b.checked) ui.ordOff.delete(b.dataset.key); else ui.ordOff.add(b.dataset.key); return dirty(true); }
+    if (b.dataset.act === 'ockall') { b.dataset.keys.split(' ').filter(Boolean).forEach(x => b.checked ? ui.ordOff.delete(x) : ui.ordOff.add(x)); return dirty(true); }
+    if (b.dataset.act === 'oqty' || b.dataset.act === 'opx') {
+      const o = a.orders.find(x => x.id === +b.dataset.id); if (!o) return;
+      const isQty = b.dataset.act === 'oqty';
+      return ask(`Edit ${o.symbol} order`, [{ k: 'v', label: isQty ? `Quantity (Lot) – ${o.filled} filled` : 'Limit price (USD)', value: isQty ? o.size : o.price }],
+        async (v) => { const r = await Engine.amendOrder(a, o.id, isQty ? { size: +v.v } : { price: +v.v }); r.ok ? toast('success', `Your ${o.symbol} order has been updated.`, 'Order Updated') : toast('error', r.error, 'Order Rejected'); }, { ok: 'Save' });
+    }
+    if (b.dataset.act === 'otpsl') return bracketDialog({ id: +b.dataset.id });
+    if (b.dataset.act === 'ostop') {
+      const r = stopRows().find(x => x.key === b.dataset.key); if (!r) return;
+      if (!r.o) return bracketDialog({ sym: r.sym });
+      return ask(`Edit ${r.sym} stop order`, [{ k: 'v', label: 'Trigger price (USD)', value: r.o.stop }], async (v) => { const res = await Engine.amendOrder(a, r.o.id, { stop: +v.v }); res.ok ? toast('success', 'Trigger updated') : toast('error', res.error); }, { ok: 'Save' });
+    }
+    if (b.dataset.act === 'scx') { const r = stopRows().find(x => x.key === b.dataset.key); if (r) await cancelRow(r); return; }
+    if (b.dataset.act === 'hshare') {
+      const o = a.history.find(x => x.id === +b.dataset.id); if (!o) return;
+      const txt = `${o.symbol} ${o.side.toUpperCase()} ${o.filled}/${o.size} lots @ ${o.avg ? (+o.avg).toFixed(dp(o.symbol)) : '-'} | net PnL ${sgn(orderPnl(o).pnl)} USD (Delta Demo)`;
+      try { await navigator.clipboard.writeText(txt); toast('success', 'Order copied to clipboard'); } catch (_) { toast('info', txt); }
+      return;
+    }
     if (b.dataset.act === 'pck') { if (b.checked) ui.posOff.delete(s); else ui.posOff.add(s); return dirty(true); }
     if (b.dataset.act === 'pckall') { shownPositions().forEach(([x]) => b.checked ? ui.posOff.delete(x) : ui.posOff.add(x)); return dirty(true); }
     if (b.dataset.act === 'close') return closeDialog(s);
-    if (b.dataset.act === 'tpclr') { const r = await Engine.setTpSl(a, s, null, null); return r.ok ? toast('info', `TP / SL removed on ${s}`) : toast('error', r.error); }
+    if (b.dataset.act === 'tpclr') { const r = await Engine.setTpSl(a, s, null, null); return r.ok ? toast('error', `Your Bracket - TP / SL orders in ${s} have been cancelled.`, 'Order Cancelled') : toast('error', r.error); }
     if (b.dataset.act === 'share') {
       const pos = a.positions[s], p = Feed.products[s], u = Engine.upnl(pos, s);
       const txt = `${s} ${pos.size > 0 ? 'LONG' : 'SHORT'} ${(Math.abs(pos.size) * p.cv).toFixed(decOf(p.cv))} ${p.unit || p.base} @ ${pos.entry.toFixed(p.dp)} | UPNL ${sgn(u)} USD (Delta Demo)`;
       try { await navigator.clipboard.writeText(txt); toast('success', 'Position copied to clipboard'); } catch (_) { toast('info', txt); }
       return;
     }
-    if (b.dataset.act === 'cx') Engine.cancel(a, +b.dataset.id);
+    if (b.dataset.act === 'cx') { const o = a.orders.find(x => x.id === +b.dataset.id); if (o) cancelOrder(o); }
     if (b.dataset.act === 'cm') { const r = await Engine.closePosition(a, s, 'market'); if (!r.ok) toast('error', r.error); }
     if (b.dataset.act === 'cl') ask(`Close ${s} at limit`, [{ k: 'price', label: 'Limit price', value: (Feed.tickers[s] || {}).last || '' }], async (v) => { const r = await Engine.closePosition(a, s, 'limit', +v.price); if (!r.ok) toast('error', r.error); });
-    if (b.dataset.act === 'tpsl') tpslDialog(s);
+    if (b.dataset.act === 'tpsl') bracketDialog({ sym: s });
   };
 
   /* ================= accounts (profile icon in the header) ================= */
@@ -925,7 +1139,7 @@
       return ({ ed: () => acctEdit(id), rs: () => acctReset(id), dl: () => acctDelete(id), new: newAccountDialog })[pa.dataset.pa]();
     }
     const sw = e.target.closest('[data-sw]');
-    if (sw) { m.classList.add('hidden'); if (sw.dataset.sw !== Engine.active.id) { Engine.switchAccount(sw.dataset.sw); toast('info', `Switched to ${Engine.active.name}`); } }
+    if (sw) { m.classList.add('hidden'); if (sw.dataset.sw !== Engine.active.id) { Engine.switchAccount(sw.dataset.sw); toast('info', `You are now trading in ${Engine.active.name}.`, 'Account Switched'); } }
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('.prof')) { const m = $('#profMenu'); if (m) m.classList.add('hidden'); } });
   const acct = (id) => Engine.state.accounts.find(x => x.id === id);
@@ -968,9 +1182,14 @@
     $('#mbox').onkeydown = (e) => { if (e.key === 'Enter') go(); };
     const first = $('#mbox input'); if (first) { first.focus(); first.select(); } else $('#askOk').focus();
   }
-  function toast(type, msg) {
-    const el = document.createElement('div'); el.className = 'toast ' + type; el.textContent = msg; $('#toasts').appendChild(el);
-    setTimeout(() => el.remove(), 4500); while ($('#toasts').children.length > 5) $('#toasts').firstChild.remove();
+  const TOAST_TITLE = { success: 'Success', error: 'Error', info: 'Info' };
+  function toast(type, msg, title) {
+    const el = document.createElement('div'); el.className = 'toast ' + type;
+    el.innerHTML = `<div class="tt"><b></b><button class="tx" title="Dismiss">×</button></div><div class="tm"></div>`;
+    el.querySelector('b').textContent = title || TOAST_TITLE[type] || 'Info'; el.querySelector('.tm').textContent = msg;
+    el.querySelector('.tx').onclick = () => el.remove();
+    $('#toasts').appendChild(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 250); }, 5000); while ($('#toasts').children.length > 4) $('#toasts').firstChild.remove();
   }
 
   /* ================= wiring & render loop ================= */
@@ -994,10 +1213,10 @@
   Engine.onChange((kind, p) => {
     if (kind === 'fill' && p) {
       const f = p.order, who = p.acct.id === Engine.active.id ? '' : `[${p.acct.name}] `;
-      toast(f.side === 'buy' ? 'success' : 'error', `${who}${f.side === 'buy' ? 'Bought' : 'Sold'} ${fmt(p.qty, 0)} ${f.symbol} @ ${fmt(p.px, dp(f.symbol))} (${p.role})`);
+      toast('success', `${who}Your ${f.side} order of ${fmt(p.qty, 0)} lots in ${f.symbol} was filled at ${(+p.px).toFixed(dp(f.symbol))}.`, 'Order Filled');
       return;
     }
-    if (kind === 'toast') return toast(p.type, p.msg);
+    if (kind === 'toast') return toast(p.type, p.msg, p.title);
     if (kind === 'conn') return connToast();
     if (kind === 'accounts') renderOrderPanel();
     updateInterest(); refreshLines(); dirty(true);
@@ -1006,11 +1225,11 @@
   let connTimer = null, lostShown = false;
   function connToast() {
     if (!Client.connected) {
-      if (!connTimer && !lostShown) connTimer = setTimeout(() => { connTimer = null; if (!Client.connected) { lostShown = true; toast('error', 'Server connection lost – reconnecting'); } }, 4000);
+      if (!connTimer && !lostShown) connTimer = setTimeout(() => { connTimer = null; if (!Client.connected) { lostShown = true; toast('error', 'Trying to reconnect to the server…', 'Connection Lost'); } }, 4000);
       return;
     }
     if (connTimer) { clearTimeout(connTimer); connTimer = null; }
-    if (lostShown) { lostShown = false; toast('success', 'Reconnected to server'); }
+    if (lostShown) { lostShown = false; toast('success', 'You are connected to the server again.', 'Reconnected'); }
   }
   setInterval(() => dirty(), 1000);
   window.addEventListener('resize', () => dirty());
