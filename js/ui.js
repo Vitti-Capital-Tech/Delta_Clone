@@ -26,9 +26,12 @@
   const hiddenCols = new Set(saved.hiddenCols || []); // option chain columns switched off in the column picker
   const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch] })); } catch (_) {} };
 
-  $('#symBtn').textContent = 'Loading markets…';
-  try { await Promise.all([Feed.init(), Client.start()]); } catch (e) {
-    document.body.insertAdjacentHTML('beforeend', `<div class="modal"><div class="mbox"><h3>Cannot start</h3>Check your internet connection and that the backend server is running, then reload.<br><span class="mut">${esc(e.message)}</span></div></div>`);
+  /* full-screen loading screen until the markets and your account are ready */
+  let fedOk = false, cliOk = false;
+  const bootStep = () => { $('#bootMsg').textContent = !fedOk ? 'Loading markets…' : !cliOk ? 'Connecting to your account…' : 'Preparing your workspace…'; };
+  try { await Promise.all([Feed.init().then(() => { fedOk = true; bootStep(); }), Client.start().then(() => { cliOk = true; bootStep(); })]); } catch (e) {
+    $('#boot').classList.add('err'); $('#bootMsg').textContent = '';
+    $('#boot .boot-box').insertAdjacentHTML('beforeend', `<div class="boot-err">Couldn't load the trading screen. Check your internet connection and try again.<small>${esc(e.message)}</small><button class="btn pri" onclick="location.reload()">Retry</button></div>`);
     return;
   }
   if (!Feed.products[ui.perp] || Feed.products[ui.perp].kind !== 'perp') ui.perp = 'BTCUSD';
@@ -1075,4 +1078,5 @@
   else { ui.view = 'futures'; ui.sym = ui.perp; }
   renderOrderPanel(); updateInterest(); applyView(); applyMobile(); dirty(true);
   Feed.emit('status');
+  requestAnimationFrame(() => { const b = $('#boot'); b.classList.add('done'); setTimeout(() => b.remove(), 450); });
 })();

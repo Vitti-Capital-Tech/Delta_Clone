@@ -539,3 +539,23 @@ td .ib[data-act="share"]{color:var(--dacc);background:none}
 .pclose:hover{background:#ef5a5a1a}
 @media (max-width:900px){.btr .bt-q{display:none}.bt-pay,.bt-close{padding:0 8px;font-size:12px}.pbar{flex-wrap:wrap}}
 .pbar .grow{flex:1}
+
+/* ---- loading screen ---- */
+.boot{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 42%,#23262d 0%,#16181d 62%);transition:opacity .4s ease,visibility .4s}
+.boot.done{opacity:0;visibility:hidden}
+.boot-box{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:24px}
+.boot-mark{position:relative;width:72px;height:72px;margin-bottom:6px}
+.boot-mark img{display:block;border-radius:16px;box-shadow:0 10px 30px #0008;animation:bootPulse 1.6s ease-in-out infinite}
+.boot-mark:after{content:'';position:absolute;inset:-11px;border-radius:50%;border:2px solid #f7861c22;border-top-color:var(--dacc);animation:bootSpin 1s linear infinite}
+.boot-name{display:flex;align-items:center;gap:8px;font-size:22px}.boot-name b{font-weight:700;letter-spacing:.4px}
+.boot-bar{width:220px;height:3px;background:#2b2e35;border-radius:2px;overflow:hidden;margin-top:4px}
+.boot-bar i{display:block;width:40%;height:100%;border-radius:2px;background:linear-gradient(90deg,transparent,var(--dacc),transparent);animation:bootBar 1.2s ease-in-out infinite}
+.boot-msg{color:#9aa0a8;font-size:13px;min-height:18px;letter-spacing:.2px}
+.boot.err .boot-bar,.boot.err .boot-mark:after,.boot.err .boot-msg{display:none}
+.boot.err .boot-mark img{animation:none}
+.boot-err{color:#c9cdd2;font-size:13.5px;max-width:330px;display:flex;flex-direction:column;gap:10px;align-items:center;line-height:1.5}
+.boot-err small{color:var(--mut);font-size:12px}
+@keyframes bootSpin{to{transform:rotate(360deg)}}
+@keyframes bootPulse{50%{transform:scale(.94);opacity:.85}}
+@keyframes bootBar{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
+@media (prefers-reduced-motion:reduce){.boot *,.boot-mark:after{animation:none!important}}
