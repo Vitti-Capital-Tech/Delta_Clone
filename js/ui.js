@@ -18,13 +18,13 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem('dx_ui2')) || {}; } catch (_) { return {}; } })();
   const ui = {
     view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
-    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(), ordOff: new Set(), ordAsc: false, pageSize: +saved.pageSize || 30, pages: {},
+    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(), ordOff: new Set(), ordAsc: false, pageSize: +saved.pageSize || 30, pages: {}, cols: saved.cols || {}, colLabels: {},
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
     lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, mtab: 'markets', mk: 'options', cview: 'price', moreOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
   };
   const watch = new Set(saved.watch || []); // ☆ markets in the picker's Watchlist tab
   const hiddenCols = new Set(saved.hiddenCols || []); // option chain columns switched off in the column picker
-  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch], pageSize: ui.pageSize })); } catch (_) {} };
+  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch], pageSize: ui.pageSize, cols: ui.cols })); } catch (_) {} };
 
   /* full-screen loading screen until the markets and your account are ready */
   let fedOk = false, cliOk = false;
@@ -728,23 +728,48 @@
     if ($('#btL').dataset.h !== html) { $('#btL').dataset.h = html; $('#btL').innerHTML = html; }
     if ($('#btR').dataset.k !== ui.botTab) {
       $('#btR').dataset.k = ui.botTab;
-      $('#btR').innerHTML = ui.botTab === 'positions' ? `<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div><button class="bt-pay" data-k="payoff">${IC_PAY}Payoff</button><button class="bt-close" data-k="closeall">Close All Positions</button>`
-        : ui.botTab === 'orders' || ui.botTab === 'stops' ? '<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div><button class="bt-close" data-k="cancelall">Cancel All Orders</button>'
-        : ui.botTab === 'fills' || ui.botTab === 'history' ? `<a class="bt-link" data-k="refresh">${IC_REF}Refresh</a><a class="bt-link acc" data-k="csv">${IC_DL}Download</a>` : '';
+      const cols = `<a class="bt-link" data-k="cols" title="Choose columns">${IC_COLS}Columns</a>`;
+      $('#btR').innerHTML = ui.botTab === 'positions' ? `<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div>${cols}<button class="bt-pay" data-k="payoff">${IC_PAY}Payoff</button><button class="bt-close" data-k="closeall">Close All Positions</button>`
+        : ui.botTab === 'orders' || ui.botTab === 'stops' ? `<div class="dinp bt-q"><input id="posQ" placeholder="Search" autocomplete="off"></div>${cols}<button class="bt-close" data-k="cancelall">Cancel All Orders</button>`
+        : ui.botTab === 'fills' || ui.botTab === 'history' ? `${cols}<a class="bt-link" data-k="refresh">${IC_REF}Refresh</a><a class="bt-link acc" data-k="csv">${IC_DL}Download</a>` : '';
       const q = $('#posQ'); if (q) { q.value = ui.posQ; q.oninput = () => { ui.posQ = q.value; dirty(true); }; }
     }
   }
   const IC_REF = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>';
   const IC_DL = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>';
+  const IC_COLS = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M6 2.5v11M10 2.5v11"/></svg>';
+  /* column name from a heading's HTML; '' for the checkbox / unnamed columns, which can't be hidden */
+  const colName = (h) => { const t = String(h).replace(/<[^>]*>/g, '').trim(); return t === 'Symbol' || t === 'Action' ? '' : t; };
+  function colsMenu(btn) {
+    const old = $('#colMenu'); if (old) { old.remove(); if (old.dataset.k === ui.botTab) return; }
+    const k = ui.botTab, labels = (ui.colLabels[k] || []).filter(Boolean); if (!labels.length) return;
+    const m = document.createElement('div'); m.id = 'colMenu'; m.className = 'colmenu'; m.dataset.k = k;
+    const draw = () => {
+      const off = ui.cols[k] || [];
+      m.innerHTML = `<div class="cm-h"><b>Columns</b><a data-cm="reset">Reset</a></div>` + labels.map(l => `<label><input type="checkbox" data-cm-col="${esc(l)}" ${off.includes(l) ? '' : 'checked'}><span>${esc(l)}</span></label>`).join('');
+    };
+    draw(); document.body.appendChild(m);
+    const r = btn.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+    m.style.top = (r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6) + 'px';
+    m.onclick = (e) => { if (e.target.closest('[data-cm="reset"]')) { delete ui.cols[k]; saveUi(); draw(); dirty(true); } };
+    m.onchange = (e) => {
+      const l = e.target.dataset.cmCol; if (l == null) return;
+      const off = new Set(ui.cols[k] || []); e.target.checked ? off.delete(l) : off.add(l);
+      if (off.size) ui.cols[k] = [...off]; else delete ui.cols[k]; saveUi(); dirty(true);
+    };
+    setTimeout(() => document.addEventListener('mousedown', function shut(e) { if (!m.contains(e.target) && !e.target.closest('[data-k="cols"]')) { m.remove(); document.removeEventListener('mousedown', shut); } }), 0);
+  }
   const IC_PAY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 12.5h13M2.5 11l4-4 2.5 2 5-5.5"/></svg>';
   $('#botTabs').onclick = (e) => {
     const k = e.target.closest('[data-k]') && e.target.closest('[data-k]').dataset.k; if (!k) return;
     if (k === 'closeall') return closeAllDialog();
     if (k === 'cancelall') return cancelAllDialog();
     if (k === 'payoff') return payoffDialog();
-    if (k === 'csv') return downloadCsv();
+    if (k === 'csv') return downloadCsv(e.target.closest('[data-k]'));
+    if (k === 'cols') return colsMenu(e.target.closest('[data-k]'));
     if (k === 'refresh') { const b = e.target.closest('[data-k]'); b.classList.add('spin'); Engine.refresh().then(() => { setTimeout(() => b.classList.remove('spin'), 400); dirty(true); }); return; }
-    ui.botTab = k; dirty(true);
+    ui.botTab = k; const cm = $('#colMenu'); if (cm) cm.remove(); dirty(true);
   };
   /* the All / Current Contract / Options / Futures chips (and search) used by every table */
   const symShown = (sym, search) => {
@@ -779,10 +804,10 @@
     return { pnl, fee };
   }
   /* rows of each order table as plain values: drawn as HTML and exported as CSV */
-  function tableData(k) {
-    const a = Engine.active;
+  function tableData(k, src) {
+    const a = src || Engine.active, byId = src ? new Map(src.history.map(o => [o.id, o])) : null;
     if (k === 'fills') return a.fills.filter(f => symShown(f.symbol)).map(f => {
-      const p = Feed.products[f.symbol] || { cv: 1, kind: 'perp', dp: 2, unit: '' }, o = orderById(f.orderId) || {};
+      const p = Feed.products[f.symbol] || { cv: 1, kind: 'perp', dp: 2, unit: '' }, o = (byId ? byId.get(f.orderId) || orderById(f.orderId) : orderById(f.orderId)) || {};
       const nt = f.size * p.cv * (p.kind === 'perp' ? f.price : (o.idx || Engine.spotOf(f.symbol) || f.price));
       return { f, p, nt, otype: o.type || (f.role === 'liquidation' ? 'market' : 'limit'), oqty: o.size || f.size,
         ftype: f.role === 'settlement' ? 'Settlement' : f.role === 'liquidation' ? 'Liquidation' : 'Normal', role: f.role === 'maker' ? 'Maker' : 'Taker' };
@@ -796,15 +821,19 @@
     });
     return [];
   }
-  function downloadCsv() {
+  async function downloadCsv(btn) {
+    if (btn && btn.classList.contains('busy')) return;
+    if (btn) btn.classList.add('busy');
+    const src = await Engine.exportData(Engine.active); if (btn) btn.classList.remove('busy');
+    if (!src || !src.ok) return toast('error', (src && src.error) || 'Could not load your history', 'Download Failed');
     const k = ui.botTab, q = (v) => { const t = String(v == null ? '' : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     let head, rows;
     if (k === 'fills') {
       head = ['Symbol', 'Fill Qty (Lot)', 'Side', 'Order Qty (Lot)', 'Execution Price', 'Notional (USD)', 'Size', 'Fill Type', 'Order Type', 'Role', 'Fee (USD)', 'Realized PnL (USD)', 'Order ID', 'Fill ID', 'Time'];
-      rows = tableData('fills').map(({ f, p, nt, otype, oqty, ftype, role }) => [f.symbol, (f.side === 'buy' ? '' : '-') + f.size, f.side === 'buy' ? 'Buy' : 'Sell', oqty, f.price, nt.toFixed(4), (f.side === 'buy' ? '' : '-') + (f.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), ftype, typeLbl(otype), role, (f.fee || 0).toFixed(4), (f.realized || 0).toFixed(4), f.orderId || '', f.id, new Date(f.ts).toISOString()]);
+      rows = tableData('fills', src).map(({ f, p, nt, otype, oqty, ftype, role }) => [f.symbol, (f.side === 'buy' ? '' : '-') + f.size, f.side === 'buy' ? 'Buy' : 'Sell', oqty, f.price, nt.toFixed(4), (f.side === 'buy' ? '' : '-') + (f.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), ftype, typeLbl(otype), role, (f.fee || 0).toFixed(4), (f.realized || 0).toFixed(4), f.orderId || '', f.id, new Date(f.ts).toISOString()]);
     } else {
       head = ['Symbol', 'Qty (Lot)', 'Side', 'Status', 'Filled (Lot)', 'Order Type', 'Limit Price', 'Trigger Price', 'Execution Price', 'Size', 'Cashflow (USD)', 'Realized PnL (USD)', 'Trading Fees Inc. GST (USD)', 'Net PnL (USD)', 'Order ID', 'Reduce-Only', 'Time'];
-      rows = tableData('history').map(({ o, p, pnl, fee, closing, cash, st }) => [o.symbol, (o.side === 'buy' ? '' : '-') + o.size, (closing ? 'Close ' : 'Open ') + (o.side === 'buy' ? 'Buy' : 'Sell'), st, o.filled, typeLbl(o.type), o.price || '', o.stop || '', o.avg || '', (o.side === 'buy' ? '' : '-') + (o.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), cash.toFixed(2), (pnl + fee).toFixed(4), fee.toFixed(4), pnl.toFixed(4), o.id, o.reduceOnly ? 'Yes' : 'No', new Date(o.ts).toISOString()]);
+      rows = tableData('history', src).map(({ o, p, pnl, fee, closing, cash, st }) => [o.symbol, (o.side === 'buy' ? '' : '-') + o.size, (closing ? 'Close ' : 'Open ') + (o.side === 'buy' ? 'Buy' : 'Sell'), st, o.filled, typeLbl(o.type), o.price || '', o.stop || '', o.avg || '', (o.side === 'buy' ? '' : '-') + (o.size * p.cv).toFixed(decOf(p.cv)) + ' ' + (p.unit || p.base || ''), cash.toFixed(2), (pnl + fee).toFixed(4), fee.toFixed(4), pnl.toFixed(4), o.id, o.reduceOnly ? 'Yes' : 'No', new Date(o.ts).toISOString()]);
     }
     const csv = [head, ...rows].map(r => r.map(q).join(',')).join('\n'), d = new Date();
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), el = document.createElement('a');
@@ -848,16 +877,53 @@
       for (const [sym] of list) { const r = await Engine.closePosition(Engine.active, sym, 'market'); if (!r.ok) toast('error', `${sym}: ${r.error}`); }
     }, { ok: 'Close at Market', danger: true, note: list.map(([sym]) => sym).join(', ') });
   }
+  /* Close Position: market or limit, all or part of the position (a reduce-only order), styled like the bracket dialog */
   function closeDialog(sym) {
-    const pos = Engine.active.positions[sym], p = Feed.products[sym], t = Feed.tickers[sym] || {}; if (!pos) return;
-    const q = Math.abs(pos.size) * p.cv, px = pos.size > 0 ? t.bid : t.ask;
-    modal(`<h3>Close ${esc(sym)} <button class="x" data-close>×</button></h3>
-      <div class="mnote">${pos.size > 0 ? 'Long' : 'Short'} ${q.toFixed(decOf(p.cv))} ${esc(p.unit || p.base)} · entry ${pos.entry.toFixed(p.dp)} · mark ${(t.mark || 0).toFixed(p.dp)}</div>
-      <div class="fld" style="margin-top:10px"><label>Limit price (USD)</label><div class="inp"><input id="clPx" inputmode="decimal" value="${px ? px.toFixed(p.dp) : ''}"></div></div>
-      <div class="mrow" style="justify-content:flex-end"><button class="btn" id="clLim">Close at Limit</button><button class="btn del" id="clMkt">Close at Market</button></div>`);
-    $('#mbox').onclick = (e) => { if (e.target.closest('[data-close]')) closeModal(); };
-    $('#clMkt').onclick = async () => { closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'market'); if (!r.ok) toast('error', r.error); };
-    $('#clLim').onclick = async () => { const v = +$('#clPx').value; closeModal(); const r = await Engine.closePosition(Engine.active, sym, 'limit', v); if (!r.ok) toast('error', r.error); };
+    const a = Engine.active, pos = a.positions[sym], p = Feed.products[sym]; if (!pos) return;
+    const long = pos.size > 0, lots = Math.abs(pos.size), cd = decOf(p.cv), st = { limit: false };
+    const t0 = Feed.tickers[sym] || {}, px0 = long ? t0.bid : t0.ask;
+    modal(`<div class="bk cl"><h3>Close Position: ${esc(sym)} <button class="x" data-close>×</button></h3>
+      <div class="bk-row"><span>Position</span><b class="${long ? 'buy' : 'sell'}">${long ? 'Long' : 'Short'} ${fmt(lots, 0)} Lot${lots === 1 ? '' : 's'} · ${(lots * p.cv).toFixed(cd)} ${esc(p.unit || p.base)}</b></div>
+      <div class="bk-row"><span>Entry Price</span><b>${pos.entry.toFixed(p.dp)}</b></div>
+      <div class="bk-row"><span>Mark Price</span><b id="clMark">-</b></div>
+      <div class="bk-sec">
+        <div class="cl-seg"><button data-cl="market" class="on">Market</button><button data-cl="limit">Limit</button></div>
+        <div class="bk-lim" id="clLimRow" style="display:none"><label>Limit Price</label><div class="bk-inp"><input id="clPx" inputmode="decimal" placeholder="Limit Price USD" value="${px0 ? px0.toFixed(p.dp) : ''}"></div></div>
+        <label style="margin-top:6px">Quantity</label><div class="bk-inp"><input id="clQty" inputmode="numeric" value="${lots}"><span class="cl-u">Lots</span></div>
+        <div class="bk-pct cl-pct">${[25, 50, 75, 100].map(x => `<a data-clp="${x}" class="${x === 100 ? 'on' : ''}">${x}%</a>`).join('')}</div>
+      </div>
+      <div class="bk-foot"><div class="bk-pnl"><div><span>Est. Realized PnL</span><b id="clPnl">-</b></div></div>
+        <button class="bk-ok cl-ok ${long ? 'sell' : 'buy'}" id="clOk"></button></div></div>`);
+    const box = $('#mbox'); box.classList.add('bkbox');
+    const qty = () => Math.floor(+$('#clQty').value || 0);
+    const draw = () => {
+      const t = Feed.tickers[sym] || {}, q = qty(), ex = st.limit ? +$('#clPx').value : (long ? t.bid : t.ask) || t.mark;
+      $('#clMark').textContent = t.mark ? t.mark.toFixed(p.dp) : '-';
+      box.querySelectorAll('[data-cl]').forEach(b => b.classList.toggle('on', (b.dataset.cl === 'limit') === st.limit));
+      $('#clLimRow').style.display = st.limit ? '' : 'none';
+      box.querySelectorAll('[data-clp]').forEach(b => b.classList.toggle('on', Math.floor(lots * b.dataset.clp / 100) === q && q > 0));
+      const pnl = q > 0 && ex ? (ex - pos.entry) * (long ? 1 : -1) * q * p.cv : null, el = $('#clPnl');
+      el.textContent = pnl == null ? '-' : `${st.limit ? '' : '≈ '}${sgn(pnl)} USD`; el.className = pnl == null ? '' : cls(pnl);
+      $('#clOk').textContent = `${q >= lots ? 'Close' : 'Reduce'} ${long ? 'Long' : 'Short'}${q > 0 ? ` · ${fmt(Math.min(q, lots), 0)} Lot${q === 1 ? '' : 's'}` : ''}`;
+    };
+    const root = box.querySelector('.cl'); // the mark / PnL refresh belongs to this dialog only; it stops when the dialog is gone
+    draw(); const live = setInterval(() => { if (!document.contains(root)) return clearInterval(live); draw(); }, 1000);
+    box.oninput = draw;
+    box.onclick = async (e) => {
+      if (e.target.closest('[data-close]')) return closeModal();
+      const ty = e.target.closest('[data-cl]'); if (ty) { st.limit = ty.dataset.cl === 'limit'; return draw(); }
+      const pc = e.target.closest('[data-clp]'); if (pc) { $('#clQty').value = Math.max(1, Math.floor(lots * pc.dataset.clp / 100)); return draw(); }
+      if (e.target.closest('#clOk')) {
+        const q = qty(), lim = +$('#clPx').value;
+        if (!(q > 0)) return toast('error', 'Enter a quantity of at least 1 lot', 'Order Rejected');
+        if (q > lots) return toast('error', `You can close at most ${fmt(lots, 0)} lots`, 'Order Rejected');
+        if (st.limit && !(lim > 0)) return toast('error', 'Enter a limit price', 'Order Rejected');
+        closeModal();
+        const r = q >= lots ? await Engine.closePosition(a, sym, st.limit ? 'limit' : 'market', st.limit ? lim : undefined)
+          : await Engine.place(a, { symbol: sym, side: long ? 'sell' : 'buy', type: st.limit ? 'limit' : 'market', size: q, price: st.limit ? lim : undefined, reduceOnly: true });
+        if (r && r.ok === false) toast('error', r.error, 'Order Rejected');
+      }
+    };
   }
   /* "Add / Edit Bracket Order" for a position (sym) or for an open order (id) */
   function bracketDialog({ sym, id }) {
@@ -960,7 +1026,9 @@
       const from = n ? (pg - 1) * size + 1 : 0, to = Math.min(n, pg * size);
       const pager = `<div class="pager"><select data-pgsz>${[10, 20, 30, 50, 100].map(x => `<option value="${x}"${x === size ? ' selected' : ''}>${x} / Page</option>`).join('')}</select>
         <button data-pg="-1" ${pg <= 1 ? 'disabled' : ''} title="Previous page">‹</button><span>${from} - ${to}</span><button data-pg="1" ${pg >= pages ? 'disabled' : ''} title="Next page">›</button></div>`;
-      return `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(from ? from - 1 : 0, to).join('')}</tbody></table>` + (n ? '' : `<div class="empty">${msg}</div>`) + pager;
+      const labels = head.map(colName); ui.colLabels[k] = labels;
+      const off = labels.map((l, i) => l && (ui.cols[k] || []).includes(l) ? `#botView tr>:nth-child(${i + 1})` : '').filter(Boolean);
+      return (off.length ? `<style>${off.join(',')}{display:none}</style>` : '') + `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(from ? from - 1 : 0, to).join('')}</tbody></table>` + (n ? '' : `<div class="empty">${msg}</div>`) + pager;
     };
     if (k === 'positions') {
       const list = shownPositions(), all = list.length && list.every(([sym]) => !ui.posOff.has(sym));
@@ -1028,12 +1096,12 @@
         <td>${f.orderId || '-'}</td><td class="mut" title="${esc(f.id)}">${esc(String(f.id).slice(0, 5).toUpperCase())}...</td><td>${dayCell(f.ts)}</td></tr>`), 'No fills yet');
     }
     if (k === 'history') {
-      const head = ['Symbol', 'Qty (Lot)', 'Side', 'Status', 'Filled (Lot)', 'Order Type', 'Limit Price', 'Trigger Price', 'Execution Price', '<span class="dl">Size</span>', 'Cashflow', 'Realized PnL', 'Trading Fees (Inc. GST)', 'Net PnL (USD)', 'Order ID', 'Reduce-Only', 'Automation ID', 'Share', 'Time'];
+      const head = ['Symbol', 'Qty (Lot)', 'Side', 'Status', 'Filled (Lot)', 'Order Type', 'Limit Price', 'Trigger Price', 'Execution Price', '<span class="dl">Size</span>', 'Cashflow', 'Realized PnL', 'Trading Fees (Inc. GST)', 'Net PnL (USD)', 'Order ID', 'Reduce-Only', 'Share', 'Time'];
       return chips() + tbl(head, tableData('history').map(({ o, p, pnl, fee, closing, cash, st }) => `<tr>${sym(o.symbol, o.side)}<td>${lotsSigned(o.side, o.size)}</td>
         <td class="${o.side === 'buy' ? 'buy' : 'sell'}">${closing ? 'Close' : 'Open'} ${o.side === 'buy' ? 'Buy' : 'Sell'}</td><td class="${st === 'Filled' ? 'buy' : 'mut'}">${st}</td><td>${fmt(o.filled, 0)}</td>
         <td>${typeLbl(o.type)}</td><td>${o.price ? o.price.toFixed(p.dp) : '-'}</td><td>${o.stop ? o.stop.toFixed(p.dp) : '-'}</td><td>${o.filled ? (+o.avg).toFixed(p.dp) : '-'}</td>
         <td class="${o.side === 'buy' ? 'buy' : 'sell'}">${o.side === 'buy' ? '+' : '-'}${baseQty(p, o.size)}</td><td>${usdc(cash)}</td><td>${usdc(pnl + fee)}</td><td>${usdc(fee)}</td><td>${usdc(pnl)}</td>
-        <td>${o.id}</td><td>${yes(o.reduceOnly)}</td><td>-</td><td><button class="ib" data-act="hshare" data-id="${o.id}" title="Copy order">${IC_SHARE}</button></td><td class="nowrap">${histTime(o.ts)}</td></tr>`), 'No order history');
+        <td>${o.id}</td><td>${yes(o.reduceOnly)}</td><td><button class="ib" data-act="hshare" data-id="${o.id}" title="Copy order">${IC_SHARE}</button></td><td class="nowrap">${histTime(o.ts)}</td></tr>`), 'No order history');
     }
     // Risk & Margin Details: status, initial and maintenance margin (with % of equity)
     const s = Engine.summary(a), im = s.posMargin + s.ordMargin, mm = Engine.maintenance(a), pc = (v) => s.equity > 0 ? ` <span class="mut">(${(v / s.equity * 100).toFixed(2)}%)</span>` : '';
@@ -1045,7 +1113,26 @@
   $('#botView').addEventListener('change', (e) => {
     if (e.target.matches('[data-sort-ord]')) { ui.ordAsc = e.target.value === 'asc'; dirty(true); }
     if (e.target.matches('[data-pgsz]')) { ui.pageSize = +e.target.value; ui.pages = {}; saveUi(); dirty(true); }
+    if (e.target.tagName === 'SELECT') e.target.blur();
   });
+  /* Live redraws patch the table in place: only changed text / attributes are touched, so buttons, checkboxes
+     and open dropdowns stay the same elements (steady hover, no lost clicks, dropdowns stay open). */
+  function morph(el, html) { const t = document.createElement('template'); t.innerHTML = html; morphKids(el, t.content); }
+  function morphKids(a, b) {
+    const an = [...a.childNodes], bn = [...b.childNodes];
+    bn.forEach((y, i) => an[i] ? morphNode(an[i], y) : a.appendChild(y));
+    for (let i = an.length - 1; i >= bn.length; i--) an[i].remove();
+  }
+  function morphNode(x, y) {
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) return x.replaceWith(y);
+    if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
+    if (x === document.activeElement && (x.tagName === 'SELECT' || x.tagName === 'INPUT')) return; // the user is using it
+    for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+    for (const at of [...y.attributes]) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+    if (x.tagName === 'INPUT') { if (x.type === 'checkbox') x.checked = y.hasAttribute('checked'); else if (x.value !== y.value) x.value = y.value; return; }
+    morphKids(x, y);
+    if (x.tagName === 'SELECT') { const v = (y.querySelector('option[selected]') || y.options[0] || {}).value; if (v != null && x.value !== v) x.value = v; }
+  }
   $('#botView').onclick = async (e) => {
     const pf = e.target.closest('[data-pf]'); if (pf) { ui.posFilter = pf.dataset.pf; ui.pages = {}; return dirty(true); }
     const pg = e.target.closest('[data-pg]'); if (pg && !pg.disabled) { ui.pages[ui.botTab] = (ui.pages[ui.botTab] || 1) + +pg.dataset.pg; $('#botView').scrollTop = 0; return dirty(true); }
@@ -1203,7 +1290,11 @@
     if (!optView() || ui.optMode === 'chart') { if (curSrc() === 'depth') drawDepth(); else renderOneClick(); }
     const now = performance.now();
     if (ui.view === 'options' && ui.optMode === 'chain' && now - lastChain > 400) { renderChainTbl(); lastChain = now; }
-    if (force || now - lastBot > 250) { renderBotTabs(); const bv = $('#botView'), st = bv.scrollTop; bv.innerHTML = botHtml(); bv.scrollTop = st; lastBot = now; force = false; }
+    if (force || now - lastBot > 250) {
+      renderBotTabs(); const bv = $('#botView'), h = botHtml();
+      if (h !== bv._h) { const st = bv.scrollTop; morph(bv, h); bv._h = h; bv.scrollTop = st; }
+      lastBot = now; force = false;
+    }
   }
   Feed.on('ticker', (s) => { if (s === ui.sym || (Engine.active && Engine.active.positions[s]) || ui.view === 'options') dirty(); });
   Feed.on('book', (s) => { if (s === ui.sym) dirty(); });

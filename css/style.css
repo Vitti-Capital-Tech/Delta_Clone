@@ -613,3 +613,20 @@ td.nowrap{white-space:nowrap}
 .pager button{width:26px;height:26px;border:1px solid var(--dln);border-radius:3px;color:#c9cdd2;font-size:15px;line-height:1}
 .pager button:hover:not(:disabled){border-color:var(--mut);color:var(--tx)}.pager button:disabled{opacity:.35;cursor:not-allowed}
 .pager span{min-width:56px;text-align:center;font-variant-numeric:tabular-nums}
+
+/* ---- Columns picker ---- */
+.colmenu{position:fixed;z-index:60;width:220px;max-height:min(420px,70vh);overflow:auto;background:#24272e;border:1px solid var(--dln);border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:6px 0;font-size:13px;color:#c9cdd2}
+.colmenu .cm-h{display:flex;align-items:center;justify-content:space-between;padding:6px 12px 8px;border-bottom:1px solid var(--dln);margin-bottom:4px}
+.colmenu .cm-h b{color:var(--tx);font-weight:500}.colmenu .cm-h a{color:var(--dacc);cursor:pointer;font-size:12px}
+.colmenu label{display:flex;align-items:center;gap:9px;padding:6px 12px;cursor:pointer}.colmenu label:hover{background:#2b2e36}
+.colmenu input{accent-color:var(--dacc);width:14px;height:14px;margin:0}
+.btr .bt-link.busy{opacity:.5;pointer-events:none}
+
+/* ---- Close Position dialog ---- */
+.bk.cl .bk-row:first-of-type{padding-top:16px}
+.cl-seg{display:grid;grid-template-columns:1fr 1fr;background:#25282f;border-radius:3px;padding:3px;margin-bottom:6px}
+.cl-seg button{height:30px;border-radius:3px;color:#9aa0a8;font-size:13px}.cl-seg button.on{background:#33363e;color:var(--tx)}
+.cl-u{color:#7f8790;font-size:12px;margin-left:8px}
+.cl-pct{grid-template-columns:repeat(4,1fr)}.cl-pct a.on{color:var(--dacc)}
+.bk-ok.cl-ok.sell{background:var(--dsell)}.bk-ok.cl-ok.buy{background:var(--dbuy)}
+.bk.cl .bk-foot{flex-direction:column;align-items:stretch;gap:14px;padding-top:18px}.bk.cl .bk-pnl{flex:none}.bk.cl .bk-ok{flex:none;width:100%}

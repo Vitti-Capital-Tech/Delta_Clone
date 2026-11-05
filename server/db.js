@@ -12,6 +12,8 @@ function accountFromRow(r) {
     lev: r.lev || {}, positions: r.positions || {}, orders: r.orders || [], created: Date.parse(r.created_at), history: [], fills: [] };
 }
 
+const fillFromRow = (x) => ({ id: x.id, orderId: x.order_id, symbol: x.symbol, side: x.side, size: x.size, price: x.price, role: x.role, fee: x.fee, realized: x.realized, ts: Date.parse(x.ts) });
+
 function createSupabase(url, serviceKey) {
   const { createClient } = require('@supabase/supabase-js');
   const sb = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -40,7 +42,7 @@ function createSupabase(url, serviceKey) {
       const accounts = rows.map(accountFromRow);
       await Promise.all(accounts.map(async (a) => {
         const f = must(await sb.from('demo_fills').select('*').eq('account_id', a.id).order('ts', { ascending: false }).limit(300), 'load fills');
-        a.fills = f.map(x => ({ id: x.id, orderId: x.order_id, symbol: x.symbol, side: x.side, size: x.size, price: x.price, role: x.role, fee: x.fee, realized: x.realized, ts: Date.parse(x.ts) }));
+        a.fills = f.map(fillFromRow);
         const h = must(await sb.from('demo_order_history').select('data').eq('account_id', a.id).order('ts', { ascending: false }).limit(300), 'load history');
         a.history = h.map(x => x.data);
       }));
@@ -62,6 +64,17 @@ function createSupabase(url, serviceKey) {
       must(await sb.from('demo_order_history').upsert({ id: o.id, account_id: a.id, data: o, ts: iso(o.ts) }), 'insert history');
     },
     async setMeta(key, value) { must(await sb.from('demo_meta').upsert({ key, value: String(value) }), 'set meta'); },
+    /* every fill and closed order of an account, newest first (for CSV download) */
+    async exportAll(id) {
+      const all = async (table, cols, what) => {
+        const out = [];
+        for (let from = 0; ; from += 1000) {
+          const page = must(await sb.from(table).select(cols).eq('account_id', id).order('ts', { ascending: false }).range(from, from + 999), what);
+          out.push(...page); if (page.length < 1000) return out;
+        }
+      };
+      return { fills: (await all('demo_fills', '*', 'export fills')).map(fillFromRow), history: (await all('demo_order_history', 'data', 'export history')).map(x => x.data) };
+    },
   };
 }
 

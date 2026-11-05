@@ -67,6 +67,7 @@
     amendOrder: (a, id, ch) => rpc('amendOrder', { acct: a.id, id, ...ch }),
     setOrderTpSl: (a, id, tp, sl, opt = {}) => rpc('setOrderTpSl', { acct: a.id, id, tp, sl, ...opt }),
     refresh: () => rpc('refresh', {}),
+    exportData: (a) => rpc('exportData', { acct: a.id }),
     setLeverage: (a, symbol, lev, asDefault) => rpc('setLeverage', { acct: a.id, symbol, lev, asDefault }),
     async createAccount(name, balance) { const r = await rpc('createAccount', { name, balance }); if (r.ok) Engine.switchAccount(r.id); return r; },
     renameAccount: (id, name) => rpc('renameAccount', { id, name }),

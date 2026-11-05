@@ -140,7 +140,12 @@ const OPS = {
   async closeAll(uid, m) { const a = own(uid, m.acct); for (const s of Object.keys(a.positions)) { await ensureBook(s); Engine.closePosition(a, s, 'market'); } return { ok: true }; },
   async amendOrder(uid, m) { return Engine.amendOrder(own(uid, m.acct), +m.id, { size: m.size, price: m.price, stop: m.stop }); },
   async setOrderTpSl(uid, m) { return Engine.setOrderTpSl(own(uid, m.acct), +m.id, +m.tp || null, +m.sl || null, bracketOpt(m)); },
-  async refresh() { return { ok: true }; }, // the reply is followed by a forced state push
+  async refresh() { return { ok: true }; },
+  async exportData(uid, m) { // full fills / order history for Download, not just the rows kept in memory
+    const a = own(uid, m.acct); await enqueue(() => {}); // let pending writes land first
+    const r = db.exportAll ? await db.exportAll(a.id) : { fills: a.fills, history: a.history };
+    return { ok: true, fills: r.fills, history: r.history };
+  }, // the reply is followed by a forced state push
   async setTpSl(uid, m) { return Engine.setTpSl(own(uid, m.acct), String(m.symbol), +m.tp || null, +m.sl || null, bracketOpt(m)); },
 };
 
