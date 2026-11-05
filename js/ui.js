@@ -1,6 +1,11 @@
 (async function () {
   const $ = (s, e = document) => e.querySelector(s);
   const fmt = (n, d = 2) => Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '--';
+  /* USD / INR display for position values. Delta India converts at a fixed ₹85 per $1
+     (fiat_to_usd.asset_to_fiat_value in its public /v2/settings), not the market rate. */
+  const USD_INR = 85;
+  const ccyAmt = (v, d = 2) => ui.ccy === 'INR' ? (Number.isFinite(v) ? (v * USD_INR).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d }) : '--') : fmt(v, d);
+  const ccyUnit = () => ui.ccy === 'INR' ? 'INR' : 'USD', ccySym = () => ui.ccy === 'INR' ? '₹' : '$';
   const compact = (n) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 }).format(n);
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const cls = (n) => n > 0 ? 'buy' : n < 0 ? 'sell' : '';
@@ -18,13 +23,13 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem('dx_ui2')) || {}; } catch (_) { return {}; } })();
   const ui = {
     view: 'options', perp: saved.perp || 'BTCUSD', opt: saved.opt || null, under: saved.under || 'BTC', expiry: null, optMode: 'chain',
-    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(), ordOff: new Set(), ordAsc: false, pageSize: +saved.pageSize || 30, pages: {}, cols: saved.cols || {}, colLabels: {},
+    sym: null, otype: 'limit', side: 'buy', botTab: 'positions', posFilter: 'all', posQ: '', posAsc: false, posOff: new Set(), ordOff: new Set(), ordAsc: false, pageSize: +saved.pageSize || 30, pages: {}, cols: saved.cols || {}, colLabels: {}, ccy: saved.ccy === 'INR' ? 'INR' : 'USD',
     f: { size: '', qty: '', unit: 'lot', price: '', stop: '', trigger: 'mark', reduce: false, post: false, tpOn: false, tp: '', sl: '', tif: 'gtc' },
     lev: { open: false, draft: 0, def: false }, ores: saved.ores || '1h', osrc: saved.osrc || 'mark', fres: saved.fres || '1h', fsrc: saved.fsrc || 'traded', pickTab: 'futures', cdOpen: false, mtab: 'markets', mk: 'options', cview: 'price', moreOpen: false, oneClick: saved.oneClick !== false, ocQty: 1, ddOpen: false, feesOpen: false, grkOpen: false, specOpen: false, obGroup: 0, obgOpen: false, strikeDesc: false,
   };
   const watch = new Set(saved.watch || []); // ☆ markets in the picker's Watchlist tab
   const hiddenCols = new Set(saved.hiddenCols || []); // option chain columns switched off in the column picker
-  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch], pageSize: ui.pageSize, cols: ui.cols })); } catch (_) {} };
+  const saveUi = () => { try { localStorage.setItem('dx_ui2', JSON.stringify({ view: ui.view, perp: ui.perp, opt: ui.opt, under: ui.under, hiddenCols: [...hiddenCols], ores: ui.ores, osrc: ui.osrc, fres: ui.fres, fsrc: ui.fsrc, oneClick: ui.oneClick, watch: [...watch], pageSize: ui.pageSize, cols: ui.cols, ccy: ui.ccy })); } catch (_) {} };
 
   /* full-screen loading screen until the markets and your account are ready */
   let fedOk = false, cliOk = false;
@@ -740,6 +745,16 @@
   const IC_COLS = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M6 2.5v11M10 2.5v11"/></svg>';
   /* column name from a heading's HTML; '' for the checkbox / unnamed columns, which can't be hidden */
   const colName = (h) => { const t = String(h).replace(/<[^>]*>/g, '').trim(); return t === 'Symbol' || t === 'Action' ? '' : t; };
+  function ccyMenu(btn) {
+    const old = $('#ccyMenu'); if (old) return old.remove();
+    const m = document.createElement('div'); m.id = 'ccyMenu'; m.className = 'colmenu ccymenu';
+    m.innerHTML = [['USD', 'USD ($)'], ['INR', 'INR (₹)']].map(([c, l]) => `<a data-ccy="${c}" class="${ui.ccy === c ? 'on' : ''}">${l}</a>`).join('');
+    document.body.appendChild(m);
+    const r = btn.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
+    m.style.top = (r.bottom + 6 + m.offsetHeight < innerHeight ? r.bottom + 6 : r.top - 6 - m.offsetHeight) + 'px';
+    m.onclick = (e) => { const c = e.target.closest('[data-ccy]'); if (!c) return; ui.ccy = c.dataset.ccy; saveUi(); m.remove(); dirty(true); };
+    setTimeout(() => document.addEventListener('mousedown', function shut(e) { if (!m.contains(e.target) && !e.target.closest('[data-act="ccy"]')) { m.remove(); document.removeEventListener('mousedown', shut); } }), 0);
+  }
   function colsMenu(btn) {
     const old = $('#colMenu'); if (old) { old.remove(); if (old.dataset.k === ui.botTab) return; }
     const k = ui.botTab, labels = (ui.colLabels[k] || []).filter(Boolean); if (!labels.length) return;
@@ -749,9 +764,12 @@
       m.innerHTML = `<div class="cm-h"><b>Columns</b><a data-cm="reset">Reset</a></div>` + labels.map(l => `<label><input type="checkbox" data-cm-col="${esc(l)}" ${off.includes(l) ? '' : 'checked'}><span>${esc(l)}</span></label>`).join('');
     };
     draw(); document.body.appendChild(m);
-    const r = btn.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    // open on the side of the button with more room, never past the screen edge: a long list scrolls inside the menu
+    const r = btn.getBoundingClientRect(), w = m.offsetWidth, above = r.top - 14, below = innerHeight - r.bottom - 14;
+    const up = m.offsetHeight > below && above > below; m.style.maxHeight = Math.min(420, Math.max(120, up ? above : below)) + 'px';
     m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
-    m.style.top = (r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6) + 'px';
+    const top = up ? r.top - 6 - m.offsetHeight : r.bottom + 6;
+    m.style.top = Math.max(8, Math.min(top, innerHeight - m.offsetHeight - 8)) + 'px';
     m.onclick = (e) => { if (e.target.closest('[data-cm="reset"]')) { delete ui.cols[k]; saveUi(); draw(); dirty(true); } };
     m.onchange = (e) => {
       const l = e.target.dataset.cmCol; if (l == null) return;
@@ -1034,7 +1052,7 @@
       const list = shownPositions(), all = list.length && list.every(([sym]) => !ui.posOff.has(sym));
       const tot = list.reduce((acc, [sym, pos]) => acc + Engine.upnl(pos, sym), 0);
       const bar = `<div class="pbar"><div class="pchips">${[['all', 'All'], ['current', 'Current Contract'], ['options', 'Options'], ['futures', 'Futures']].map(([f, l]) => `<a data-pf="${f}" class="${f === ui.posFilter ? 'on' : ''}">${l}</a>`).join('')}</div>
-        <span class="grow"></span><span class="pusd">USD ($)</span><span class="ptot">Σ Total UPNL <b class="${cls(tot)}">${tot >= 0 ? '+' : '-'}$${fmt(Math.abs(tot))}</b></span>
+        <span class="grow"></span><a class="pusd" data-act="ccy" title="Show values in USD or INR">${ui.ccy === 'INR' ? 'INR (₹)' : 'USD ($)'}<i class="pusd-c">▾</i></a><span class="ptot">Σ Total UPNL <b class="${cls(tot)}">${tot >= 0 ? '+' : '-'}${ccySym()}${ccyAmt(Math.abs(tot))}</b></span>
         <a class="psort" data-act="psort">Time Placed ${ui.posAsc ? '↑' : '↓'}</a></div>`;
       const head = [`<input type="checkbox" class="pck" data-act="pckall" ${all ? 'checked' : ''}>`, 'Symbol', 'Size', 'Notional', 'Entry Price', '<span class="dl">TP / SL</span>', 'Index Price', 'Mark Price', '<span class="dl">Est. Liq. Price</span>', '<span class="dl">Margin</span>', '<span class="dl">UPNL</span>', 'Share', 'Cashflows', 'Action'];
       return bar + tbl(head, list.map(([s, pos]) => {
@@ -1044,13 +1062,13 @@
         return `<tr><td><input type="checkbox" class="pck" data-act="pck" data-s="${s}" ${ui.posOff.has(s) ? '' : 'checked'}></td>
           <td class="psym ${long ? 'l' : 's'}"><a data-sym="${s}">${s}</a></td>
           <td class="${long ? 'buy' : 'sell'}">${long ? '+' : '-'}${q.toFixed(cd)} ${esc(p.unit || p.base)}</td>
-          <td>${fmt(notional)} <span class="mut">USD</span></td><td>${pos.entry.toFixed(d)}</td>
+          <td>${ccyAmt(notional)} <span class="mut">${ccyUnit()}</span></td><td>${pos.entry.toFixed(d)}</td>
           <td><div class="ptpsl"><div>${tpsl('TP', pos.tp)}${tpsl('SL', pos.sl)}</div><button class="ib" data-act="tpsl" data-s="${s}" title="Edit TP / SL">${IC.edit}</button><button class="ib" data-act="tpclr" data-s="${s}" title="Remove TP / SL" ${pos.tp || pos.sl ? '' : 'disabled'}>${IC.del}</button></div></td>
           <td>${num1(idx, 1)}</td><td>${mk.toFixed(d)}${o && t.iv ? `<small class="mut" style="display:block">${(t.iv * 100).toFixed(1)}%</small>` : ''}</td>
-          <td><span class="dl">N.A.</span></td><td>${o && long ? '-' : `${fmt(pos.margin)} <span class="mut">USD</span>`}</td>
-          <td class="${cls(u)}">${fmt(u)} USD<small style="display:block">${pct.toFixed(2)}%</small></td>
+          <td><span class="dl">N.A.</span></td><td>${o && long ? '-' : `${ccyAmt(pos.margin)} <span class="mut">${ccyUnit()}</span>`}</td>
+          <td class="${cls(u)}">${ccyAmt(u)} ${ccyUnit()}<small style="display:block">${pct.toFixed(2)}%</small></td>
           <td><button class="ib" data-act="share" data-s="${s}" title="Copy position">${IC_SHARE}</button></td>
-          <td>${o ? `${num1(cash, 2)} <span class="mut">USD</span>` : '-'}</td>
+          <td>${o ? `${ccyAmt(cash)} <span class="mut">${ccyUnit()}</span>` : '-'}</td>
           <td><button class="pclose" data-act="close" data-s="${s}" title="Close position">✕</button></td></tr>`;
       }), 'No open positions');
     }
@@ -1139,6 +1157,7 @@
     const sym = e.target.closest('[data-sym]'); if (sym) return selectSymbol(sym.dataset.sym);
     const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     const a = Engine.active, s = b.dataset.s;
+    if (b.dataset.act === 'ccy') return ccyMenu(b);
     if (b.dataset.act === 'psort') { ui.posAsc = !ui.posAsc; return dirty(true); }
     if (b.dataset.act === 'ock') { if (b.checked) ui.ordOff.delete(b.dataset.key); else ui.ordOff.add(b.dataset.key); return dirty(true); }
     if (b.dataset.act === 'ockall') { b.dataset.keys.split(' ').filter(Boolean).forEach(x => b.checked ? ui.ordOff.delete(x) : ui.ordOff.add(x)); return dirty(true); }
